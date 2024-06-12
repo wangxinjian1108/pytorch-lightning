@@ -213,3 +213,6 @@ requirements/base.txt
 
 # sourced notebooks from tutorials
 _notebooks/.notebooks/
+
+tb_logs/
+
