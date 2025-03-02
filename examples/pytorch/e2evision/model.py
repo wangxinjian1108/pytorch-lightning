@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import torch.nn.functional as F
 from base import (
     SourceCameraId, CameraType, ObstacleTrajectory, 
-    ObjectType, TrajParamIndex, Point3DAccMotion, AttributeType
+    ObjectType, TrajParamIndex, Point3DAccMotion, AttributeType,
+    CameraIntrinsicIndex, ExtrinsicIndex, EgoStateIndex
 )
 import numpy as np
 from temporal_fusion import TemporalAttentionFusion
@@ -533,14 +534,14 @@ class TrajectoryDecoder(nn.Module):
                          points_3d: torch.Tensor, 
                          intrinsic: torch.Tensor, 
                          extrinsic: torch.Tensor,
-                         image_size: Tuple[int, int]) -> torch.Tensor:
+                         image_size: Optional[Tuple[int, int]] = None) -> torch.Tensor:
         """Project 3D points to image coordinates considering different camera types.
         
         Args:
             points_3d: Tensor[N, 3] - 3D points in ego coordinate system
             intrinsic: Tensor[CameraIntrinsicIndex.END_OF_INDEX] - Camera intrinsic parameters
-            extrinsic: Tensor[4, 4] - Camera extrinsic matrix (ego to camera)
-            image_size: Tuple(width, height) - Original image dimensions
+            extrinsic: Tensor[ExtrinsicIndex.END_OF_INDEX] - Camera extrinsic parameters
+            image_size: Optional tuple (width, height) - If not provided, uses from intrinsic
             
         Returns:
             Tensor[N, 2] - 2D pixel coordinates normalized by image dimensions (0 to 1)
@@ -556,6 +557,10 @@ class TrajectoryDecoder(nn.Module):
         cx = intrinsic[CameraIntrinsicIndex.CX]
         cy = intrinsic[CameraIntrinsicIndex.CY]
         
+        # Override image size if provided
+        if image_size is not None:
+            img_width, img_height = image_size
+        
         # Distortion parameters
         k1 = intrinsic[CameraIntrinsicIndex.K1]
         k2 = intrinsic[CameraIntrinsicIndex.K2]
@@ -564,9 +569,34 @@ class TrajectoryDecoder(nn.Module):
         p1 = intrinsic[CameraIntrinsicIndex.P1]
         p2 = intrinsic[CameraIntrinsicIndex.P2]
         
+        # Convert quaternion to rotation matrix
+        qw = extrinsic[ExtrinsicIndex.QW]
+        qx = extrinsic[ExtrinsicIndex.QX]
+        qy = extrinsic[ExtrinsicIndex.QY]
+        qz = extrinsic[ExtrinsicIndex.QZ]
+        
+        # Quaternion to rotation matrix
+        R = torch.zeros(3, 3, device=device)
+        R[0, 0] = 1 - 2*qy*qy - 2*qz*qz
+        R[0, 1] = 2*qx*qy - 2*qz*qw
+        R[0, 2] = 2*qx*qz + 2*qy*qw
+        R[1, 0] = 2*qx*qy + 2*qz*qw
+        R[1, 1] = 1 - 2*qx*qx - 2*qz*qz
+        R[1, 2] = 2*qy*qz - 2*qx*qw
+        R[2, 0] = 2*qx*qz - 2*qy*qw
+        R[2, 1] = 2*qy*qz + 2*qx*qw
+        R[2, 2] = 1 - 2*qx*qx - 2*qy*qy
+        
+        # Translation vector
+        t = torch.tensor([
+            extrinsic[ExtrinsicIndex.X], 
+            extrinsic[ExtrinsicIndex.Y], 
+            extrinsic[ExtrinsicIndex.Z]
+        ], device=device)
+        
         # Transform points from ego to camera coordinate system
-        points_hom = torch.cat([points_3d, torch.ones(points_3d.shape[0], 1, device=device)], dim=1)  # [N, 4]
-        points_cam = torch.matmul(points_hom, extrinsic.T)[:, :3]  # [N, 3]
+        # R_cw @ (p - t)
+        points_cam = torch.matmul(points_3d - t, R.T)
         
         # Points behind the camera
         behind_camera = (points_cam[:, 2] <= 0)
@@ -715,7 +745,7 @@ class E2EPerceptionNet(nn.Module):
         
         # Per-camera temporal fusion
         self.temporal_fusion = nn.ModuleDict({
-            str(camera_id): TemporalAttentionFusion(
+            str(int(camera_id)): TemporalAttentionFusion(
                 feature_dim=feature_dim,
                 num_heads=8,
                 dropout=0.1
@@ -735,8 +765,8 @@ class E2EPerceptionNet(nn.Module):
         Args:
             batch: Dict containing:
                 - images: Dict[camera_id -> Tensor[B, T, 3, H, W]]
-                - ego_states: List[Dict]
-                - calibrations: Dict[camera_id -> Dict]
+                - calibrations: Dict[camera_id -> Dict with intrinsic, extrinsic]
+                - ego_states: Tensor[B, T, EgoStateIndex.END_OF_INDEX]
         """
         # Extract features from each camera
         features = {}
@@ -749,7 +779,7 @@ class E2EPerceptionNet(nn.Module):
             feat = feat.view(B, T, *feat.shape[1:])  # [B, T, C, H, W]
             
             # Apply temporal fusion for each camera independently
-            fused_feat = self.temporal_fusion[str(camera_id)](feat)  # [B, T, C, H, W]
+            fused_feat = self.temporal_fusion[str(int(camera_id))](feat)  # [B, T, C, H, W]
             
             # Store fused features
             features[camera_id] = fused_feat
