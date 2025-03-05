@@ -30,6 +30,7 @@ def parse_args():
     parser.add_argument('--weight-decay', type=float, default=1e-4, help='Weight decay')
     parser.add_argument('--max-epochs', type=int, default=100, help='Maximum number of epochs')
     parser.add_argument('--resume', type=str, default='', help='Path to checkpoint to resume from')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     
     # Hardware arguments
     parser.add_argument('--accelerator', type=str, default='auto', help='Accelerator to use (auto, gpu, cpu)')
@@ -49,6 +50,9 @@ def parse_args():
 def main():
     # Parse arguments
     args = parse_args()
+    
+    # Set random seed
+    L.seed_everything(args.seed, workers=True)
     
     # Define camera IDs
     camera_ids = [
