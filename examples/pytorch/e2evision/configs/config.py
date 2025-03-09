@@ -101,7 +101,7 @@ class DataConfig(ConfigBase):
 @dataclass
 class DecoderConfig(ConfigBase):
     """Decoder configuration"""
-    num_layers: int = 5
+    num_layers: int = 3
     num_queries: int = 128
     feature_dim: int = 256
     hidden_dim: int = 512
@@ -170,8 +170,8 @@ class LoggingConfig(ConfigBase):
         'v_num', 
         'train/loss_step', 
         'train/loss_epoch',
-        'train/layer_6_loss_cls_epoch',
-        'train/layer_6_loss_pos_epoch',
+        'train/layer_3_loss_cls_epoch',
+        'train/layer_3_loss_pos_epoch',
         'val/loss',
         'epoch',
         'step'
@@ -181,29 +181,29 @@ class LoggingConfig(ConfigBase):
     wandb_log_metrics: List[str] = field(default_factory=lambda: [
         'train/loss_epoch', 
         'val/loss',
-        'train/layer_6_loss_pos_epoch',
-        'train/layer_6_loss_dim_epoch',
-        'train/layer_6_loss_vel_epoch',
-        'train/layer_6_loss_yaw_epoch',
-        'train/layer_6_loss_acc_epoch',
-        'train/layer_6_loss_cls_epoch',
-        'train/layer_6_fp_loss_exist_epoch',
-        'train/layer_5_loss_cls_epoch',
-        'train/layer_5_loss_pos_epoch',
-        'train/layer_5_loss_dim_epoch',
-        'train/layer_5_loss_vel_epoch',
-        'train/layer_5_loss_yaw_epoch',
-        'train/layer_5_loss_acc_epoch',
-        'train/layer_5_loss_cls_epoch',
-        'train/layer_5_fp_loss_exist_epoch',
-        'train/layer_4_loss_cls_epoch',
-        'train/layer_4_loss_pos_epoch',
-        'train/layer_4_loss_dim_epoch',
-        'train/layer_4_loss_vel_epoch',
-        'train/layer_4_loss_yaw_epoch',
-        'train/layer_4_loss_acc_epoch',
-        'train/layer_4_loss_cls_epoch',
-        'train/layer_4_fp_loss_exist_epoch'
+        'train/layer_3_loss_pos_epoch',
+        'train/layer_3_loss_dim_epoch',
+        'train/layer_3_loss_vel_epoch',
+        'train/layer_3_loss_yaw_epoch',
+        'train/layer_3_loss_acc_epoch',
+        'train/layer_3_loss_cls_epoch',
+        'train/layer_3_fp_loss_exist_epoch',
+        'train/layer_2_loss_cls_epoch',
+        'train/layer_2_loss_pos_epoch',
+        'train/layer_2_loss_dim_epoch',
+        'train/layer_2_loss_vel_epoch',
+        'train/layer_2_loss_yaw_epoch',
+        'train/layer_2_loss_acc_epoch',
+        'train/layer_2_loss_cls_epoch',
+        'train/layer_2_fp_loss_exist_epoch',
+        'train/layer_1_loss_cls_epoch',
+        'train/layer_1_loss_pos_epoch',
+        'train/layer_1_loss_dim_epoch',
+        'train/layer_1_loss_vel_epoch',
+        'train/layer_1_loss_yaw_epoch',
+        'train/layer_1_loss_acc_epoch',
+        'train/layer_1_loss_cls_epoch',
+        'train/layer_1_fp_loss_exist_epoch'
     ])
     
 @dataclass
@@ -221,7 +221,6 @@ class LossConfig(ConfigBase):
     layer_loss_weights: List[float] = field(default_factory=lambda: [
         0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 1.0
     ])
-    aux_loss_weight: float = 0.5
     frames: int = 10
     dt: float = 0.1
     iou_method: str = "iou2"
