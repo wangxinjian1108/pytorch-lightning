@@ -524,6 +524,8 @@ class Sparse4DModule(LightningDetector):
         
         # # Log losses
         for name, value in loss_dict.items():
+            if name not in ["loss", "standard_decoder_loss", "cross_attention_decoder_loss"]:
+                continue
             self.log(f"train/{name}", value, on_step=True, on_epoch=True, prog_bar=True, batch_size=batch['trajs'].shape[0], sync_dist=True)
             
         return loss_dict
@@ -546,6 +548,8 @@ class Sparse4DModule(LightningDetector):
         
         # Log losses
         for name, value in loss_dict.items():
+            if name not in ["loss", "standard_decoder_loss", "cross_attention_decoder_loss"]:
+                continue
             self.log(f"val/{name}", value, on_step=False, on_epoch=True, prog_bar=True, batch_size=batch['trajs'].shape[0], sync_dist=True)
         
         return loss_dict
@@ -593,6 +597,8 @@ class Sparse4DModule(LightningDetector):
         
         # Log metrics
         for name, value in metrics.items():
+            if name not in ["loss", "standard_decoder_loss", "cross_attention_decoder_loss"]:
+                continue
             self.log(f"val/{name}", value, on_epoch=True, sync_dist=True)
         
         # Clear outputs

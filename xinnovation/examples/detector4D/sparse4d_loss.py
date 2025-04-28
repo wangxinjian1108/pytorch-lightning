@@ -13,7 +13,7 @@ import numpy as np
 from xinnovation.src.utils.debug_utils import check_nan_or_inf
 
 
-check_abnormal = True
+check_abnormal = False
 
 __all__ = ["Sparse4DLossWithDAC"]
 
@@ -198,6 +198,7 @@ class Sparse4DLossWithDAC(nn.Module):
         B, M, N = gt_trajs.shape[0], gt_trajs.shape[1], outputs[0].shape[1]
 
         # 1. Add loss of standard decoders
+        standard_decoder_losses = {}
         for layer_idx, pred_trajs in enumerate(outputs):
             indices = self._compute_hungarian_match_results(gt_trajs, pred_trajs, valid_gt_nbs)
             if mode == "val" and step_idx == 0:
@@ -221,7 +222,7 @@ class Sparse4DLossWithDAC(nn.Module):
             last_idx = TrajParamIndex.END_OF_INDEX if layer_idx > 0 else TrajParamIndex.HAS_OBJECT + 1
             obj_loss = self.has_object_loss(pred_trajs[:, :, TrajParamIndex.HAS_OBJECT:last_idx].flatten(end_dim=1),
                                             gt_trajs_reordered[:, :, TrajParamIndex.HAS_OBJECT:last_idx].flatten(end_dim=1))
-            losses[f'layer_{layer_idx}_obj_loss'] = obj_loss * layer_loss_weight
+            standard_decoder_losses[f'layer_{layer_idx}_obj_loss'] = obj_loss * layer_loss_weight
             if num_positive_preds > 0:
                 # 1.3 calculate loss for positive preds
                 # from [B, N, TrajParamIndex.END_OF_INDEX] to [num_positive_preds, TrajParamIndex.END_OF_INDEX]
@@ -231,22 +232,25 @@ class Sparse4DLossWithDAC(nn.Module):
                     # only apply the loss on positive preds
                     obj_loss = self.has_object_loss(positive_preds[:, TrajParamIndex.HAS_OBJECT],
                                                     positive_gts[:, TrajParamIndex.HAS_OBJECT])
-                    losses[f'layer_{layer_idx}_obj_loss'] = obj_loss * layer_loss_weight
+                    standard_decoder_losses[f'layer_{layer_idx}_obj_loss'] = obj_loss * layer_loss_weight
                 # 1.3.1 calculate the other attribute classification loss for all the positive preds
                 # attribute_loss = self.attribute_loss(
                 #     positive_preds[:, TrajParamIndex.HAS_OBJECT + 1:],
                 #     positive_gts[:, TrajParamIndex.HAS_OBJECT + 1:]
                 # ) 
-                # losses[f'layer_{layer_idx}_attr_loss'] = attribute_loss * layer_loss_weight
+                # standard_decoder_losses[f'layer_{layer_idx}_attr_loss'] = attribute_loss * layer_loss_weight
                 # 1.3.2 calculate the regression loss for all the positive preds
                 regression_loss = self.regression_loss(
                     positive_preds[:, TrajParamIndex.X:TrajParamIndex.HEIGHT + 1],
                     positive_gts[:, TrajParamIndex.X:TrajParamIndex.HEIGHT + 1]
                 )
-                losses[f'layer_{layer_idx}_reg_loss'] = regression_loss * layer_loss_weight
+                standard_decoder_losses[f'layer_{layer_idx}_reg_loss'] = regression_loss * layer_loss_weight
+        losses.update(standard_decoder_losses)
+        losses['standard_decoder_loss'] = sum(standard_decoder_losses.values())
             
         # 2. Add loss of cross-attention decoder
         check_nan_or_inf(c_outputs, active=check_abnormal, name="c_outputs")
+        cross_attention_decoder_losses = {}
         if c_outputs is not None:
             for layer_idx, pred_trajs in enumerate(c_outputs[1:]):
                 # NOTE: layer 0 is the same result as the standard decoders, so we skip it
@@ -257,20 +261,23 @@ class Sparse4DLossWithDAC(nn.Module):
                 unmatched_preds = pred_trajs[unmatched_preds_idx[0], unmatched_preds_idx[1]] # [num_unmatched_preds, TrajParamIndex.END_OF_INDEX]
                 if matched_preds.shape[0] > 0:
                     # 2.1 calculate the classification loss for matched preds
-                    losses[f'layer_{layer_idx}_cls_loss_ct'] = self.has_object_loss(matched_preds[:, TrajParamIndex.HAS_OBJECT],
+                    cross_attention_decoder_losses[f'layer_{layer_idx}_cls_loss_ct'] = self.has_object_loss(matched_preds[:, TrajParamIndex.HAS_OBJECT],
                                                                             matched_gts[:, TrajParamIndex.HAS_OBJECT]) * weight * self.ct_cls_loss_weight
-                    check_nan_or_inf(losses[f'layer_{layer_idx}_cls_loss_ct'], active=check_abnormal, name=f"layer_{layer_idx}_cls_loss_ct")
+                    check_nan_or_inf(cross_attention_decoder_losses[f'layer_{layer_idx}_cls_loss_ct'], active=check_abnormal, name=f"layer_{layer_idx}_cls_loss_ct")
                     # 2.2 calculate the regression loss for matched preds
-                    losses[f'layer_{layer_idx}_reg_loss_ct'] = self.regression_loss(matched_preds[:, TrajParamIndex.X:TrajParamIndex.HEIGHT + 1],
+                    cross_attention_decoder_losses[f'layer_{layer_idx}_reg_loss_ct'] = self.regression_loss(matched_preds[:, TrajParamIndex.X:TrajParamIndex.HEIGHT + 1],
                                                                                 matched_gts[:, TrajParamIndex.X:TrajParamIndex.HEIGHT + 1]) * weight
-                    check_nan_or_inf(losses[f'layer_{layer_idx}_reg_loss_ct'], active=check_abnormal, name=f"layer_{layer_idx}_reg_loss_ct")
+                    check_nan_or_inf(cross_attention_decoder_losses[f'layer_{layer_idx}_reg_loss_ct'], active=check_abnormal, name=f"layer_{layer_idx}_reg_loss_ct")
                 # 2.3 calculate the classification loss for unmatched preds
                 if unmatched_preds.shape[0] > 0:
                     labels = torch.zeros_like(unmatched_preds[:, TrajParamIndex.HAS_OBJECT])
-                    losses[f'layer_{layer_idx}_fp_cls_loss_ct'] = self.has_object_loss(unmatched_preds[:, TrajParamIndex.HAS_OBJECT],
+                    cross_attention_decoder_losses[f'layer_{layer_idx}_fp_cls_loss_ct'] = self.has_object_loss(unmatched_preds[:, TrajParamIndex.HAS_OBJECT],
                                                                                 labels) * weight * self.ct_cls_loss_weight
-                    check_nan_or_inf(losses[f'layer_{layer_idx}_fp_cls_loss_ct'], active=check_abnormal, name=f"layer_{layer_idx}_fp_cls_loss_ct")
-        losses['loss'] = sum(losses.values())
+                    check_nan_or_inf(cross_attention_decoder_losses[f'layer_{layer_idx}_fp_cls_loss_ct'], active=check_abnormal, name=f"layer_{layer_idx}_fp_cls_loss_ct")
+        losses.update(cross_attention_decoder_losses)
+        losses['cross_attention_decoder_loss'] = sum(cross_attention_decoder_losses.values())
+        
+        losses['loss'] = losses['standard_decoder_loss'] + losses['cross_attention_decoder_loss']
         return losses
 
 def compute_has_object_cls_cost_matrix(gt_trajs: torch.Tensor, pred_trajs: torch.Tensor) -> torch.Tensor:
