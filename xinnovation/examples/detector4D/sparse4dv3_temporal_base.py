@@ -202,7 +202,8 @@ lightning_module = dict(
             camera_nb=7,
             fpn_levels=3,
             residual_mode="cat",
-            use_log_dimension=use_log_dimension
+            use_log_dimension=use_log_dimension,
+            feature_dropout_prob=0.2
         ),
         self_attention=dict(
             type="DecoupledMultiHeadAttention",

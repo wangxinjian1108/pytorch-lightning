@@ -30,6 +30,7 @@ class MultiviewTemporalSpatialFeatureAggregator(nn.Module):
                  fpn_levels: int = 3,
                  residual_mode: str = "cat",
                  use_log_dimension: bool = False,
+                 feature_dropout_prob: float = 0.1,
                  **kwargs):
         """Initialize the feature sampler.
         
@@ -63,6 +64,7 @@ class MultiviewTemporalSpatialFeatureAggregator(nn.Module):
             nn.Linear(query_dim, self.weight_channel), 
             nn.Sigmoid()
         )
+        self.feature_dropout = nn.Dropout(p=feature_dropout_prob)
         
         self.init_weights()
                 
@@ -184,6 +186,8 @@ class MultiviewTemporalSpatialFeatureAggregator(nn.Module):
         weights = self._generate_kpts_feature_weight(trajs, content_queries, pos_queries, ego_states)
         # weights: Tensor[B * T, N, N_cams, P, L]
         weights[invalid_mask] = 0.0
+        # TODO: add dropout for weights: for example drop several temporal frames or some kpts
+        weights = self.feature_dropout(weights)
         
         # 3. Sample the features
         features_list = []
@@ -211,7 +215,6 @@ class MultiviewTemporalSpatialFeatureAggregator(nn.Module):
         check_nan_or_inf(features, active=check_abnormal, name="features")
         check_nan_or_inf(weights, active=check_abnormal, name="weights")
         
-        # TODO: add dropout for weights: for example drop several temporal frames or some kpts
         weighted_features = features * weights
         weighted_features = weighted_features.sum(dim=(1, 4, 5, 6)) # [B, query_dim, N]
         weights_sum = weights.sum(dim=(1, 4, 5, 6)) # [B, 1, N]
