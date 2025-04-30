@@ -26,11 +26,13 @@ class AnchorEncoder(nn.Module):
                  vel_embed_dim: int,
                  embed_dim: int,
                  use_log_dimension: bool,
+                 is_sequential_model: bool,
                  anchor_generator_config: Dict,
                  ):
         super().__init__()
         self.embed_dim = pos_embed_dim + dim_embed_dim + orientation_embed_dim + vel_embed_dim
         assert self.embed_dim == embed_dim, f"embed_dim {self.embed_dim} != {embed_dim}"
+        self.is_sequential_model = is_sequential_model
 
         self.use_log_dimension = use_log_dimension
         self.anchor_generator = ANCHOR_GENERATOR.build(anchor_generator_config)
@@ -46,11 +48,17 @@ class AnchorEncoder(nn.Module):
                 nn.ReLU(),
                 nn.LayerNorm(output_dim)
             )
-
+        
+        if self.is_sequential_model:
+            self.velocity_embed_layer = create_embedding_layer(2, vel_embed_dim)
+        else:
+            pos_embed_dim += vel_embed_dim
+            # if no velocity, to reserve the entire embed_dim, we need to compensate the velocity_embed_dim
+            # to position_embed_dim
         self.position_embed_layer = create_embedding_layer(3, pos_embed_dim)
         self.dimension_embed_layer = create_embedding_layer(3, dim_embed_dim)
         self.orientation_embed_layer = create_embedding_layer(2, orientation_embed_dim)
-        self.velocity_embed_layer = create_embedding_layer(2, vel_embed_dim)
+        
         self.fusion_layer = create_embedding_layer(self.embed_dim, self.embed_dim)
         
         self.init_weights()
@@ -94,8 +102,11 @@ class AnchorEncoder(nn.Module):
         position_embed = self.position_embed_layer(trajs[:, :, TrajParamIndex.X:TrajParamIndex.Z + 1])
         dimension_embed = self.dimension_embed_layer(trajs[:, :, TrajParamIndex.LENGTH:TrajParamIndex.HEIGHT + 1])
         orientation_embed = self.orientation_embed_layer(trajs[:, :, TrajParamIndex.COS_YAW:TrajParamIndex.SIN_YAW + 1])
-        velocity_embed = self.velocity_embed_layer(trajs[:, :, TrajParamIndex.VX:TrajParamIndex.VY + 1])
-        cat_embed = torch.cat([position_embed, dimension_embed, orientation_embed, velocity_embed], dim=-1)
+        if self.is_sequential_model:
+            velocity_embed = self.velocity_embed_layer(trajs[:, :, TrajParamIndex.VX:TrajParamIndex.VY + 1])
+            cat_embed = torch.cat([position_embed, dimension_embed, orientation_embed, velocity_embed], dim=-1)
+        else:
+            cat_embed = torch.cat([position_embed, dimension_embed, orientation_embed], dim=-1)
         return self.fusion_layer(cat_embed)
         
 

@@ -26,6 +26,7 @@ class Sparse4DLossWithDAC(nn.Module):
                     regression_loss: dict,
                     xrel_range: List[float],
                     yrel_range: List[float],
+                    is_sequential_model: bool,
                     use_normalized_motion_cost: bool = False,
                     ct_cost_thresh: float = 10,
                     ct_cls_loss_weight: float = 0.1,
@@ -46,6 +47,11 @@ class Sparse4DLossWithDAC(nn.Module):
         self.use_normalized_motion_cost = use_normalized_motion_cost
         self.ct_cost_thresh = ct_cost_thresh
         self.ct_cls_loss_weight = ct_cls_loss_weight
+        self.regression_loss_index = [TrajParamIndex.X, TrajParamIndex.Y, TrajParamIndex.Z, TrajParamIndex.COS_YAW, TrajParamIndex.SIN_YAW,\
+                                       TrajParamIndex.LENGTH, TrajParamIndex.WIDTH, TrajParamIndex.HEIGHT]
+        self.is_sequential_model = is_sequential_model
+        if is_sequential_model:
+            self.regression_loss_index.extend([TrajParamIndex.VX, TrajParamIndex.VY, TrajParamIndex.AX, TrajParamIndex.AY])
         self.epoch = 0
 
     def update_epoch(self, epoch: int):
@@ -132,7 +138,10 @@ class Sparse4DLossWithDAC(nn.Module):
         # 1. calculate the cost matrix
         # 1.1 calculate the regression loss, of shape [B, M, N]
         center_cost = torch.cdist(gt_trajs[:, :, TrajParamIndex.X:TrajParamIndex.Z+1], pred_trajs[:, :, TrajParamIndex.X:TrajParamIndex.Z+1], p=1)
-        velocity_cost = torch.cdist(gt_trajs[:, :, TrajParamIndex.VX:TrajParamIndex.VY+1], pred_trajs[:, :, TrajParamIndex.VX:TrajParamIndex.VY+1], p=1)
+        if self.is_sequential_model:
+            velocity_cost = torch.cdist(gt_trajs[:, :, TrajParamIndex.VX:TrajParamIndex.VY+1], pred_trajs[:, :, TrajParamIndex.VX:TrajParamIndex.VY+1], p=1)
+        else:
+            velocity_cost = torch.zeros_like(center_cost)
         dimension_cost = torch.cdist(gt_trajs[:, :, TrajParamIndex.LENGTH:TrajParamIndex.HEIGHT+1], 
                                      pred_trajs[:, :, TrajParamIndex.LENGTH:TrajParamIndex.HEIGHT+1], p=1)
         if self.use_normalized_motion_cost:
@@ -241,8 +250,8 @@ class Sparse4DLossWithDAC(nn.Module):
                 # standard_decoder_losses[f'layer_{layer_idx}_attr_loss'] = attribute_loss * layer_loss_weight
                 # 1.3.2 calculate the regression loss for all the positive preds
                 regression_loss = self.regression_loss(
-                    positive_preds[:, TrajParamIndex.X:TrajParamIndex.HEIGHT + 1],
-                    positive_gts[:, TrajParamIndex.X:TrajParamIndex.HEIGHT + 1]
+                    positive_preds[:, self.regression_loss_index],
+                    positive_gts[:, self.regression_loss_index]
                 )
                 standard_decoder_losses[f'layer_{layer_idx}_reg_loss'] = regression_loss * layer_loss_weight
         losses.update(standard_decoder_losses)
@@ -265,8 +274,8 @@ class Sparse4DLossWithDAC(nn.Module):
                                                                             matched_gts[:, TrajParamIndex.HAS_OBJECT]) * weight * self.ct_cls_loss_weight
                     check_nan_or_inf(cross_attention_decoder_losses[f'layer_{layer_idx}_cls_loss_ct'], active=check_abnormal, name=f"layer_{layer_idx}_cls_loss_ct")
                     # 2.2 calculate the regression loss for matched preds
-                    cross_attention_decoder_losses[f'layer_{layer_idx}_reg_loss_ct'] = self.regression_loss(matched_preds[:, TrajParamIndex.X:TrajParamIndex.HEIGHT + 1],
-                                                                                matched_gts[:, TrajParamIndex.X:TrajParamIndex.HEIGHT + 1]) * weight
+                    cross_attention_decoder_losses[f'layer_{layer_idx}_reg_loss_ct'] = self.regression_loss(matched_preds[:, self.regression_loss_index],
+                                                                                matched_gts[:, self.regression_loss_index]) * weight
                     check_nan_or_inf(cross_attention_decoder_losses[f'layer_{layer_idx}_reg_loss_ct'], active=check_abnormal, name=f"layer_{layer_idx}_reg_loss_ct")
                 # 2.3 calculate the classification loss for unmatched preds
                 if unmatched_preds.shape[0] > 0:

@@ -143,6 +143,7 @@ lightning_module = dict(
             vel_embed_dim=64,
             embed_dim=query_dim,
             use_log_dimension=use_log_dimension,
+            is_sequential_model=seq_length > 1,
             anchor_generator_config=dict(
                 type="Anchor3DGenerator",
                 front_type="div_x",
@@ -297,6 +298,7 @@ lightning_module = dict(
         ),
         ct_cost_thresh=10,
         ct_cls_loss_weight=0.1,
+        is_sequential_model=seq_length > 1
     ),
     debug_config = dict(
         visualize_validation_results=True,

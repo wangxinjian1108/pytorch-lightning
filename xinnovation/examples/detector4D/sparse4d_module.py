@@ -128,12 +128,21 @@ class Sparse4DModule(LightningDetector):
             cimg = img_sequence.permute(0, 2, 1, 3, 4) # [B, H, T, W, 3]
             cimg = cimg.reshape(B * H, T * W, 3) # [B * H, T * W, 3]
             cimg = cimg.cpu().numpy() # [B * H, T * W, 3]
-            for ib in range(B):
-                for it in range(T):
-                    # debug_message = f"{camera_id.name}: {ego_states[ib, it, EgoStateIndex.TIMESTAMP]:.2f}"
-                    debug_message = f"{ego_states[ib, it, EgoStateIndex.TIMESTAMP]:.2f}"
-                    cv_color = color.cpu().numpy().tolist()
-                    cv2.putText(cimg[ib * H: (ib + 1) * H, it * W: (it + 1) * W], debug_message, (W // 2, 45), cv2.FONT_HERSHEY_SIMPLEX, 1, cv_color, 2)
+            if T > 1:
+                for ib in range(B):
+                    for it in range(T):
+                        # debug_message = f"{camera_id.name}: {ego_states[ib, it, EgoStateIndex.TIMESTAMP]:.2f}"
+                        debug_message = f"{ego_states[ib, it, EgoStateIndex.TIMESTAMP]:.2f}"
+                        cv_color = color.cpu().numpy().tolist()
+                        # Extract the tile and create a contiguous copy
+                        tile = cimg[ib * H : (ib + 1) * H, it * W : (it + 1) * W].copy()
+
+                        # Draw text on the contiguous tile
+                        cv2.putText(tile, debug_message, (W // 2, 45), cv2.FONT_HERSHEY_SIMPLEX, 1, cv_color, 2)
+
+                        # Update the original image with the modified tile
+                        cimg[ib * H : (ib + 1) * H, it * W : (it + 1) * W] = tile
+                        # cv2.putText(cimg[ib * H: (ib + 1) * H, it * W: (it + 1) * W], debug_message, (W // 2, 45), cv2.FONT_HERSHEY_SIMPLEX, 1, cv_color, 2)
             cimg = cimg.astype(np.uint8)
             concat_imgs[camera_id] = cimg
             
@@ -480,7 +489,7 @@ class Sparse4DModule(LightningDetector):
                     if camera_id not in self.debug_config.visualize_camera_list:
                         continue
                     img_name = f'{camera_id.name}_{epoch_str}_{layer_idx}.png'
-                    img = concat_imgs[camera_id]
+                    img = concat_imgs[camera_id].copy()
                     # Add color indicator in the corner
                     color_box = np.zeros((30, 30, 3), dtype=np.uint8)
                     color_box[:] = layer_colors[layer_idx]
@@ -490,6 +499,8 @@ class Sparse4DModule(LightningDetector):
                     # Convert RGB to BGR before saving
                     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                     cv2.imwrite(os.path.join(save_dir, img_name), img)
+                    
+                    concat_imgs[camera_id] = img
 
         
         # 4. visualize pred trajs of last layer

@@ -5,9 +5,7 @@ from xinnovation.examples.detector4D.sparse4d_dataset import CameraGroupConfig
 
 # ============================== 1. Base Config ==============================
 query_dim = 256
-seq_length = 5
-sliding_window_size = 20
-sliding_window_stride = 2
+seq_length = 1
 dropout = 0.1
 num_groups = 8
 num_decoder = 6
@@ -16,22 +14,22 @@ use_temp_attention = False
 with_quality_estimation = False
 wandb_project_name = "sparse4d_v1"
 exp_name = "sparse4dv3_temporal_base"
-work_dir = "/home/xinjian.wang/pytorch-lightning"
-save_dir = f"{work_dir}/xinnovation_checkpoints/{exp_name}"
-checkpoint_dir = f"{work_dir}/xinnovation_checkpoints/{exp_name}"
-epochs = 200
+work_dir = "/home/xinjian/Code/pytorch-lightning"
+save_dir = f"{work_dir}/xinnovation_checkpoints"
+checkpoint_dir = f"{work_dir}/xinnovation_checkpoints"
+epochs = 10
 accumulate_grad_batches = 1
 resume = False
-shuffle = True
+shuffle = False
 batch_size = 1
-devices = [0, 1, 2, 3, 4, 5, 6, 7]
-xrel_range = [-60.0, 100.0]
+devices = [0]
+xrel_range = [-60.0, 125.0]
 yrel_range = [-10.0, 10.0]
 use_log_dimension = False
-detr3d_style_decoding_xyz = False
+detr3d_style_decoding_xyz = True
 # devices = [0]
 
-# ============================== 4. Trainer Config ==============================
+# ============================== 2. Trainer Config ==============================
 lightning_trainer = dict(
     type="LightningTrainer",
     # Training loop parameters
@@ -40,15 +38,15 @@ lightning_trainer = dict(
     max_steps=-1,
     min_steps=None,
     max_time=None,
-    limit_train_batches=0.2, # 1 for one epoch, 1.0 for all epochs
+    limit_train_batches=1, # 1 for one epoch, 1.0 for all epochs
     limit_val_batches=1,  
     limit_test_batches=1,
-    limit_predict_batches=1,
+    limit_predict_batches=0.1,
     overfit_batches=0.0,
     val_check_interval=1.0,
     check_val_every_n_epoch=1,
     num_sanity_val_steps=0, # 0 remove sanity check
-    log_every_n_steps=2,
+    log_every_n_steps=50,
     enable_progress_bar=True,
     gradient_clip_val=1.0,
     gradient_clip_algorithm="norm",
@@ -132,8 +130,6 @@ lightning_module = dict(
     type="Sparse4DModule",
     detector=dict(
         type="Sparse4DDetector",
-        use_same_mts_for_different_layers=False,
-        use_checkpoint=True,
         camera_groups=dict(
             front_stereo_camera=[SourceCameraId.FRONT_LEFT_CAMERA, SourceCameraId.FRONT_RIGHT_CAMERA],
             short_focal_length_camera=[SourceCameraId.FRONT_CENTER_CAMERA, SourceCameraId.SIDE_LEFT_CAMERA, SourceCameraId.SIDE_RIGHT_CAMERA],
@@ -201,9 +197,9 @@ lightning_module = dict(
             type="MultiviewTemporalSpatialFeatureAggregator",
             query_dim=query_dim,
             num_learnable_points=8,
-            learnable_points_range=5.0,
+            learnable_points_range=3.0,
             sequence_length=seq_length,
-            temporal_weight_decay=0.5,
+            temporal_weight_decay=4.0 * 4.0, # 4s gives exp(-3) weight
             camera_nb=7,
             fpn_levels=3,
             residual_mode="cat",
@@ -258,10 +254,15 @@ lightning_module = dict(
             post_norm=None
         ) if use_temp_attention else None
     ),
+    # scheduler=dict(
+    #     type="CosineAnnealingLRScheduler",
+    #     T_max=epochs,
+    #     eta_min=0.0001
+    # ),
     scheduler=dict(
-        type="CosineAnnealingLRScheduler",
-        T_max=epochs,
-        eta_min=0.0001
+        type="StepLRScheduler",
+        gamma=0.1,
+        step_size=10
     ),
     optimizer=dict(
         type="AdamWOptimizer",
