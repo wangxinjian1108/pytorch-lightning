@@ -31,7 +31,6 @@ class StepLRScheduler:
         step_size (int): 学习率下降的周期（epoch 数）
         gamma (float): 学习率调整的乘法因子
         last_epoch (int): 上一个 epoch 的索引，默认为 -1
-        verbose (bool): 是否在更新时打印信息
     """
     
     def __init__(
@@ -40,22 +39,19 @@ class StepLRScheduler:
         step_size: int,
         gamma: float = 0.1,
         last_epoch: int = -1,
-        verbose: bool = False,
         **kwargs
     ):
         self.optimizer = optimizer
         self.step_size = step_size
         self.gamma = gamma
         self.last_epoch = last_epoch
-        self.verbose = verbose
         
         # 创建调度器实例
         self.scheduler = StepLR(
             optimizer=self.optimizer,
             step_size=self.step_size,
             gamma=self.gamma,
-            last_epoch=self.last_epoch,
-            verbose=self.verbose
+            last_epoch=self.last_epoch
         )
 
 
@@ -70,7 +66,6 @@ class MultiStepLRScheduler:
         milestones (List[int]): 学习率下降的轮次列表
         gamma (float): 学习率调整的乘法因子
         last_epoch (int): 上一个 epoch 的索引，默认为 -1
-        verbose (bool): 是否在更新时打印信息
     """
     
     def __init__(
@@ -79,22 +74,19 @@ class MultiStepLRScheduler:
         milestones: List[int],
         gamma: float = 0.1,
         last_epoch: int = -1,
-        verbose: bool = False,
         **kwargs
     ):
         self.optimizer = optimizer
         self.milestones = milestones
         self.gamma = gamma
         self.last_epoch = last_epoch
-        self.verbose = verbose
         
         # 创建调度器实例
         self.scheduler = MultiStepLR(
             optimizer=self.optimizer,
             milestones=self.milestones,
             gamma=self.gamma,
-            last_epoch=self.last_epoch,
-            verbose=self.verbose
+            last_epoch=self.last_epoch
         )
 
 
@@ -108,7 +100,6 @@ class ExponentialLRScheduler:
         optimizer (Optimizer): 要调整学习率的优化器
         gamma (float): 学习率调整的乘法因子
         last_epoch (int): 上一个 epoch 的索引，默认为 -1
-        verbose (bool): 是否在更新时打印信息
     """
     
     def __init__(
@@ -116,20 +107,17 @@ class ExponentialLRScheduler:
         optimizer: torch.optim.Optimizer,
         gamma: float = 0.9,
         last_epoch: int = -1,
-        verbose: bool = False,
         **kwargs
     ):
         self.optimizer = optimizer
         self.gamma = gamma
         self.last_epoch = last_epoch
-        self.verbose = verbose
         
         # 创建调度器实例
         self.scheduler = ExponentialLR(
             optimizer=self.optimizer,
             gamma=self.gamma,
-            last_epoch=self.last_epoch,
-            verbose=self.verbose
+            last_epoch=self.last_epoch
         )
 
 
@@ -144,7 +132,6 @@ class CosineAnnealingLRScheduler:
         T_max (int): 退火周期的最大迭代次数
         eta_min (float): 学习率的最小值
         last_epoch (int): 上一个 epoch 的索引，默认为 -1
-        verbose (bool): 是否在更新时打印信息
     """
     
     def __init__(
@@ -153,22 +140,19 @@ class CosineAnnealingLRScheduler:
         T_max: int,
         eta_min: float = 0,
         last_epoch: int = -1,
-        verbose: bool = False,
         **kwargs
     ):
         self.optimizer = optimizer
         self.T_max = T_max
         self.eta_min = eta_min
         self.last_epoch = last_epoch
-        self.verbose = verbose
         
         # 创建调度器实例
         self.scheduler = CosineAnnealingLR(
             optimizer=self.optimizer,
             T_max=self.T_max,
             eta_min=self.eta_min,
-            last_epoch=self.last_epoch,
-            verbose=self.verbose
+            last_epoch=self.last_epoch
         )
 
 
@@ -188,7 +172,6 @@ class ReduceLROnPlateauScheduler:
         cooldown (int): 减少学习率后冷却的 epoch 数量
         min_lr (float 或 List): 学习率的最小值
         eps (float): 更新的最小差值
-        verbose (bool): 是否在更新时打印信息
     """
     
     def __init__(
@@ -202,7 +185,6 @@ class ReduceLROnPlateauScheduler:
         cooldown: int = 0,
         min_lr: float = 0,
         eps: float = 1e-8,
-        verbose: bool = False,
         **kwargs
     ):
         self.optimizer = optimizer
@@ -214,7 +196,6 @@ class ReduceLROnPlateauScheduler:
         self.cooldown = cooldown
         self.min_lr = min_lr
         self.eps = eps
-        self.verbose = verbose
         
         # 创建调度器实例
         self.scheduler = ReduceLROnPlateau(
@@ -226,8 +207,7 @@ class ReduceLROnPlateauScheduler:
             threshold_mode=self.threshold_mode,
             cooldown=self.cooldown,
             min_lr=self.min_lr,
-            eps=self.eps,
-            verbose=self.verbose
+            eps=self.eps
         )
 
 
@@ -251,7 +231,6 @@ class CyclicLRScheduler:
         base_momentum (float 或 List): 最小动量
         max_momentum (float 或 List): 最大动量
         last_epoch (int): 上一个 epoch 的索引，默认为 -1
-        verbose (bool): 是否在更新时打印信息
     """
     
     def __init__(
@@ -269,7 +248,6 @@ class CyclicLRScheduler:
         base_momentum: Union[float, List[float]] = 0.8,
         max_momentum: Union[float, List[float]] = 0.9,
         last_epoch: int = -1,
-        verbose: bool = False,
         **kwargs
     ):
         self.optimizer = optimizer
@@ -285,7 +263,6 @@ class CyclicLRScheduler:
         self.base_momentum = base_momentum
         self.max_momentum = max_momentum
         self.last_epoch = last_epoch
-        self.verbose = verbose
         
         # 创建调度器实例
         self.scheduler = CyclicLR(
@@ -301,8 +278,7 @@ class CyclicLRScheduler:
             cycle_momentum=self.cycle_momentum,
             base_momentum=self.base_momentum,
             max_momentum=self.max_momentum,
-            last_epoch=self.last_epoch,
-            verbose=self.verbose
+            last_epoch=self.last_epoch
         )
 
 
@@ -326,7 +302,6 @@ class OneCycleLRScheduler:
         div_factor (float): 初始学习率与最大学习率的比例
         final_div_factor (float): 最小学习率与初始学习率的比例
         last_epoch (int): 上一个 epoch 的索引，默认为 -1
-        verbose (bool): 是否在更新时打印信息
     """
     
     def __init__(
@@ -344,7 +319,6 @@ class OneCycleLRScheduler:
         div_factor: float = 25.0,
         final_div_factor: float = 1e4,
         last_epoch: int = -1,
-        verbose: bool = False,
         **kwargs
     ):
         self.optimizer = optimizer
@@ -360,7 +334,6 @@ class OneCycleLRScheduler:
         self.div_factor = div_factor
         self.final_div_factor = final_div_factor
         self.last_epoch = last_epoch
-        self.verbose = verbose
         
         # 确保 total_steps 已指定或可计算
         if total_steps is None and (epochs is None or steps_per_epoch is None):
@@ -381,8 +354,7 @@ class OneCycleLRScheduler:
             max_momentum=self.max_momentum,
             div_factor=self.div_factor,
             final_div_factor=self.final_div_factor,
-            last_epoch=self.last_epoch,
-            verbose=self.verbose
+            last_epoch=self.last_epoch
         )
 
 
@@ -398,7 +370,6 @@ class CosineAnnealingWarmRestartsScheduler:
         T_mult (int): 增加后续重启周期长度的因子
         eta_min (float): 学习率的最小值
         last_epoch (int): 上一个 epoch 的索引，默认为 -1
-        verbose (bool): 是否在更新时打印信息
     """
     
     def __init__(
@@ -408,7 +379,6 @@ class CosineAnnealingWarmRestartsScheduler:
         T_mult: int = 1,
         eta_min: float = 0,
         last_epoch: int = -1,
-        verbose: bool = False,
         **kwargs
     ):
         self.optimizer = optimizer
@@ -416,7 +386,6 @@ class CosineAnnealingWarmRestartsScheduler:
         self.T_mult = T_mult
         self.eta_min = eta_min
         self.last_epoch = last_epoch
-        self.verbose = verbose
         
         # 创建调度器实例
         self.scheduler = CosineAnnealingWarmRestarts(
@@ -424,8 +393,7 @@ class CosineAnnealingWarmRestartsScheduler:
             T_0=self.T_0,
             T_mult=self.T_mult,
             eta_min=self.eta_min,
-            last_epoch=self.last_epoch,
-            verbose=self.verbose
+            last_epoch=self.last_epoch
         )
 
 
@@ -439,7 +407,6 @@ class LambdaLRScheduler:
         optimizer (Optimizer): 要调整学习率的优化器
         lr_lambda (callable 或 List): 学习率调整函数
         last_epoch (int): 上一个 epoch 的索引，默认为 -1
-        verbose (bool): 是否在更新时打印信息
     """
     
     def __init__(
@@ -447,20 +414,17 @@ class LambdaLRScheduler:
         optimizer: torch.optim.Optimizer,
         lr_lambda: Union[Callable, List[Callable]],
         last_epoch: int = -1,
-        verbose: bool = False,
         **kwargs
     ):
         self.optimizer = optimizer
         self.lr_lambda = lr_lambda
         self.last_epoch = last_epoch
-        self.verbose = verbose
         
         # 创建调度器实例
         self.scheduler = LambdaLR(
             optimizer=self.optimizer,
             lr_lambda=self.lr_lambda,
-            last_epoch=self.last_epoch,
-            verbose=self.verbose
+            last_epoch=self.last_epoch
         )
 
 
