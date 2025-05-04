@@ -30,6 +30,7 @@ class Sparse4DLossWithDAC(nn.Module):
                     use_normalized_motion_cost: bool = False,
                     ct_cost_thresh: float = 10,
                     ct_cls_loss_weight: float = 0.1,
+                    enable_dac_loss: bool = True,
                     **kwargs):
         super().__init__()
         self.xrel_range = xrel_range
@@ -53,6 +54,7 @@ class Sparse4DLossWithDAC(nn.Module):
         if is_sequential_model:
             self.regression_loss_index.extend([TrajParamIndex.VX, TrajParamIndex.VY, TrajParamIndex.AX, TrajParamIndex.AY])
         self.epoch = 0
+        self.enable_dac_loss = enable_dac_loss
 
     def update_epoch(self, epoch: int):
         self.epoch = epoch
@@ -256,11 +258,13 @@ class Sparse4DLossWithDAC(nn.Module):
                 standard_decoder_losses[f'layer_{layer_idx}_reg_loss'] = regression_loss * layer_loss_weight
         losses.update(standard_decoder_losses)
         losses['standard_decoder_loss'] = sum(standard_decoder_losses.values())
+        losses['loss'] = losses['standard_decoder_loss']
             
         # 2. Add loss of cross-attention decoder
         check_nan_or_inf(c_outputs, active=check_abnormal, name="c_outputs")
-        cross_attention_decoder_losses = {}
-        if c_outputs is not None:
+        
+        if c_outputs is not None and self.enable_dac_loss:
+            cross_attention_decoder_losses = {}
             for layer_idx, pred_trajs in enumerate(c_outputs[1:]):
                 # NOTE: layer 0 is the same result as the standard decoders, so we skip it
                 weight = self.layer_loss_weights[layer_idx]
@@ -283,10 +287,9 @@ class Sparse4DLossWithDAC(nn.Module):
                     cross_attention_decoder_losses[f'layer_{layer_idx}_fp_cls_loss_ct'] = self.has_object_loss(unmatched_preds[:, TrajParamIndex.HAS_OBJECT],
                                                                                 labels) * weight * self.ct_cls_loss_weight
                     check_nan_or_inf(cross_attention_decoder_losses[f'layer_{layer_idx}_fp_cls_loss_ct'], active=check_abnormal, name=f"layer_{layer_idx}_fp_cls_loss_ct")
-        losses.update(cross_attention_decoder_losses)
-        losses['cross_attention_decoder_loss'] = sum(cross_attention_decoder_losses.values())
-        
-        losses['loss'] = losses['standard_decoder_loss'] + losses['cross_attention_decoder_loss']
+            losses.update(cross_attention_decoder_losses)
+            losses['cross_attention_decoder_loss'] = sum(cross_attention_decoder_losses.values())
+            losses['loss'] += losses['cross_attention_decoder_loss']
         return losses
 
 def compute_has_object_cls_cost_matrix(gt_trajs: torch.Tensor, pred_trajs: torch.Tensor) -> torch.Tensor:

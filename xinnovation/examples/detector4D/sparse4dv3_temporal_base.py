@@ -298,7 +298,8 @@ lightning_module = dict(
         ),
         ct_cost_thresh=10,
         ct_cls_loss_weight=0.1,
-        is_sequential_model=seq_length > 1
+        is_sequential_model=seq_length > 1,
+        enable_dac_loss=True
     ),
     debug_config = dict(
         visualize_validation_results=True,
