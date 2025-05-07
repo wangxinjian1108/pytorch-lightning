@@ -2,6 +2,7 @@ from typing import List, Tuple, Callable, Dict, Any
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
 import os
 from xinnovation.src.core.registry import ANCHOR_GENERATOR
@@ -212,6 +213,8 @@ class Anchor3DGenerator:
         # 拼接所有anchor参数: [N, 6] 每行为 (x, y, z, l, w, h)
         anchors = torch.cat([xx_flat, yy_flat, zz, ll, ww, hh], dim=1)
         
+        # anchors = torch.flip(anchors, dims=[0])
+        
         return anchors
 
     def visualize_anchors_bev(self, ax, alpha=0.2, linewidth=1.0):
@@ -230,28 +233,52 @@ class Anchor3DGenerator:
         length, width, height = self.anchor_size
         
         # 绘制每个anchor的BEV视图
-        for anchor in anchors:
+        for i in range(len(anchors)):
+            anchor = anchors[i]
             x, y, z, l, w, h = anchor
             
             # 计算矩形的左下角坐标
             rect_x = y - w/2
             rect_y = x - l/2
             
-            # 根据位置设置颜色 (前向为蓝色，后向为红色)
-            color = 'blue' if x >= 0 else 'red'
-            
-            # 创建矩形
-            rect = Rectangle(
-                (rect_x, rect_y),  # 左下角坐标
-                w, l,  # 宽度和长度
-                linewidth=linewidth,
-                edgecolor=color,
-                facecolor=color,
-                alpha=alpha
-            )
+            if True:
+                # 根据位置设置颜色 (前向为蓝色，后向为红色)
+                color = 'blue' if x >= 0 else 'red'
+                
+                # 创建矩形
+                rect = Rectangle(
+                    (rect_x, rect_y),  # 左下角坐标
+                    w, l,  # 宽度和长度
+                    linewidth=linewidth,
+                    edgecolor=color,
+                    facecolor=color,
+                    alpha=alpha
+                )
+            else:
+                colors = list(mcolors.TABLEAU_COLORS.values())  # 或者用 'viridis', 'jet' 等色彩映射
+                patterns = ['/', '\\', '|', '-', '+', 'x', 'o', 'O', '.', '*']  # 不同的填充样式
+                # 使用不同的颜色和样式
+                color_idx = i % len(colors)
+                pattern_idx = i % len(patterns)
+                
+                # 创建矩形
+                rect = Rectangle(
+                    (rect_x, rect_y),  # 左下角坐标
+                    w, l,  # 宽度和长度
+                    linewidth=linewidth,
+                    edgecolor=colors[color_idx],
+                    facecolor=colors[color_idx],
+                    alpha=0.3 + (i % 5) * 0.1,  # 变化的透明度
+                    hatch=patterns[pattern_idx]  # 添加填充图案
+                )
             
             # 添加矩形到图像
             ax.add_patch(rect)
+            
+            # 添加文本标签到矩形中心
+            ax.text(rect_x + w/2, rect_y + l/2, f"{i}", 
+                    ha='center', va='center', fontsize=8, 
+                    color='black', fontweight='bold')
     
     def save_bev_anchor_fig(self, output_dir="./"):
         """保存BEV视图的anchor图"""
