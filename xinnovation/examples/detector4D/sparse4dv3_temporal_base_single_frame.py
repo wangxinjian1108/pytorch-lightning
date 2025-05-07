@@ -150,15 +150,15 @@ lightning_module = dict(
                 back_type="div_x",
                 front_params=dict(alpha=0.28, beta=20.0, order=1.5), # beta * torch.pow(x, order) / (alpha - x), x = idx * min_spacing / max_distance
                 back_params=dict(alpha=0.2, beta=20.0, order=1.5),
-                front_min_spacing=2.0,
-                front_max_distance=200.0,
-                back_min_spacing=2.0,
-                back_max_distance=100.0,
+                front_min_spacing=3.0,
+                front_max_distance=xrel_range[1],
+                back_min_spacing=3.0,
+                back_max_distance=-xrel_range[0],
                 left_y_max=3.75 * 2,
                 right_y_max=3.75 * 2,
                 y_interval=3.75,
                 z_value=0.2,
-                anchor_size=(5.0, 2.0, 1.5) # (length, width, height)
+                anchor_size=(6.0, 2.0, 1.5) # (length, width, height)
             ),
         ),
         feature_extractors=dict(
@@ -306,7 +306,7 @@ lightning_module = dict(
         visualize_validation_results_dir=f"{work_dir}/xinnovation_validation_results",
         visualize_camera_list=[SourceCameraId.FRONT_LEFT_CAMERA, SourceCameraId.SIDE_LEFT_CAMERA, SourceCameraId.REAR_LEFT_CAMERA],
         render_gt_trajs=True,
-        render_init_trajs=False,
+        render_init_trajs=True,
         render_pred_trajs=True,
         render_matched_trajs=True,
         pred_traj_threshold=0.5,

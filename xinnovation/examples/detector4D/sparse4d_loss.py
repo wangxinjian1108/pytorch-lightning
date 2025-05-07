@@ -11,6 +11,7 @@ from typing import Tuple, Dict, List, Any
 from torch.nn import functional as F
 import numpy as np
 from xinnovation.src.utils.debug_utils import check_nan_or_inf
+from xinnovation.src.utils.visualize_utils import visualize_matrix_interactive, save_matrix_heatmap
 
 
 check_abnormal = False
@@ -162,6 +163,7 @@ class Sparse4DLossWithDAC(nn.Module):
         cls_cost = compute_has_object_cls_cost_matrix(gt_trajs, pred_trajs) # (B, M, N)
         # 1.4 calculate the composite loss
         
+        self.cls_cost_weight = 0
         cost_matrix = cls_cost * self.cls_cost_weight + regression_cost * self.regression_cost_weight
         # 2. calculate the indices
         indices = []
