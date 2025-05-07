@@ -142,11 +142,12 @@ class TrajectoryRefiner(nn.Module):
         # regression part
         # (X, Y, Z, VX, VY, AX, AY, YAW, COS_YAW, SIN_YAW, LOG(LENGTH), LOG(WIDTH), LOG(HEIGHT))
         self.reg_dim = TrajParamIndex.HEIGHT + 1
+        self.motion_dim = TrajParamIndex.AY + 1
         self.reg_layers = nn.Sequential(
             *linear_relu_ln(hidden_dim, 2, 2, query_dim),
             nn.Linear(hidden_dim, self.reg_dim)
         )
-
+        
         # classification part
         # HAS_OBJECT, STATIC, OCCLUDED, CAR, SUV, LIGHTTRUCK, TRUCK, BUS, PEDESTRIAN, BICYCLE, MOTO, CYCLIST, MOTORCYCLIST, CONE
         self.cls_dim = TrajParamIndex.END_OF_INDEX - self.reg_dim
@@ -224,15 +225,15 @@ class TrajectoryRefiner(nn.Module):
         # 1. Do refinement for trajs regression part
         # Update the motion x, y, z, vx, vy, ax, ay
         if self.detr3d_style_decoding_xyz:
-            reference = (refined_trajs[..., :TrajParamIndex.AY + 1] - self.motion_mins) / (self.motion_ranges)
+            reference = (refined_trajs[..., :self.motion_dim] - self.motion_mins) / (self.motion_ranges)
             reference = inverse_sigmoid(reference)
-            reg_out[..., :TrajParamIndex.AY + 1] += reference
-            reg_out[..., :TrajParamIndex.AY + 1] = reg_out[..., :TrajParamIndex.AY + 1].sigmoid()
-            refined_trajs[..., :TrajParamIndex.AY + 1] = reg_out[..., :TrajParamIndex.AY + 1] * self.motion_ranges + self.motion_mins
+            reg_out[..., :self.motion_dim] += reference
+            reg_out[..., :self.motion_dim] = reg_out[..., :self.motion_dim].sigmoid()
+            refined_trajs[..., :self.motion_dim] = reg_out[..., :self.motion_dim] * self.motion_ranges + self.motion_mins
         else:
-            refined_trajs[..., :TrajParamIndex.AY + 1] += reg_out[..., :TrajParamIndex.AY + 1]
+            refined_trajs[..., :self.motion_dim] += reg_out[..., :self.motion_dim]
         
-        # Update the rotation
+        # Update the rotation, cos and sin
         if self.normalize_yaw:
             reg_out[..., [TrajParamIndex.COS_YAW, TrajParamIndex.SIN_YAW]] = torch.nn.functional.normalize(
                 reg_out[..., [TrajParamIndex.COS_YAW, TrajParamIndex.SIN_YAW]], dim=-1
@@ -252,4 +253,12 @@ class TrajectoryRefiner(nn.Module):
         # 2. Set regression part for cls part
         clamped_trajs[..., -self.cls_dim:] = cls_out
         
-        return clamped_trajs, quality_out
+        # return clamped_trajs, quality_out
+        
+        refined_trajs2 = trajs.clone()
+        refined_trajs2[..., -self.cls_dim:] = cls_out
+        
+        return refined_trajs2, quality_out
+        
+        
+        

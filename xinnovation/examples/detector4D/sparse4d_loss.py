@@ -66,7 +66,7 @@ class Sparse4DLossWithDAC(nn.Module):
 
     def get_latest_matching_indices(self, layer_idx: int) -> List[Tuple[np.ndarray, np.ndarray]]:
         if layer_idx not in self.matching_history:
-            return []
+            return None
         return self.matching_history[layer_idx][-1]
     
     @torch.no_grad()
@@ -230,7 +230,8 @@ class Sparse4DLossWithDAC(nn.Module):
             layer_loss_weight = self.layer_loss_weights[layer_idx]
 
             # 1.2 calculate the has object classification loss for all the preds
-            last_idx = TrajParamIndex.END_OF_INDEX if layer_idx > 0 else TrajParamIndex.HAS_OBJECT + 1
+            # last_idx = TrajParamIndex.END_OF_INDEX if layer_idx > 0 else TrajParamIndex.HAS_OBJECT + 1
+            last_idx = TrajParamIndex.HAS_OBJECT + 1
             obj_loss = self.has_object_loss(pred_trajs[:, :, TrajParamIndex.HAS_OBJECT:last_idx].flatten(end_dim=1),
                                             gt_trajs_reordered[:, :, TrajParamIndex.HAS_OBJECT:last_idx].flatten(end_dim=1))
             standard_decoder_losses[f'layer_{layer_idx}_obj_loss'] = obj_loss * layer_loss_weight
@@ -239,11 +240,13 @@ class Sparse4DLossWithDAC(nn.Module):
                 # from [B, N, TrajParamIndex.END_OF_INDEX] to [num_positive_preds, TrajParamIndex.END_OF_INDEX]
                 positive_preds = pred_trajs[matched_mask] 
                 positive_gts = gt_trajs_reordered[matched_mask]
-                if layer_idx == 0:
-                    # only apply the loss on positive preds
-                    obj_loss = self.has_object_loss(positive_preds[:, TrajParamIndex.HAS_OBJECT],
-                                                    positive_gts[:, TrajParamIndex.HAS_OBJECT])
-                    standard_decoder_losses[f'layer_{layer_idx}_obj_loss'] = obj_loss * layer_loss_weight
+                
+                # if layer_idx == 0:
+                #     # only apply the loss on positive preds
+                #     obj_loss = self.has_object_loss(positive_preds[:, TrajParamIndex.HAS_OBJECT],
+                #                                     positive_gts[:, TrajParamIndex.HAS_OBJECT])
+                #     standard_decoder_losses[f'layer_{layer_idx}_obj_loss'] = obj_loss * layer_loss_weight
+                
                 # 1.3.1 calculate the other attribute classification loss for all the positive preds
                 # attribute_loss = self.attribute_loss(
                 #     positive_preds[:, TrajParamIndex.HAS_OBJECT + 1:],

@@ -404,8 +404,8 @@ class Sparse4DModule(LightningDetector):
     def on_train_end(self):
         """On train end, visualize the matching history."""
         if self.global_rank == 0:
-            self._generate_validation_trajs_video()
-            self._generate_matched_trajs_video()
+            # self._generate_validation_trajs_video()
+            # self._generate_matched_trajs_video()
             self._visualize_matching_results()
         
     def on_validation_end(self):
@@ -476,6 +476,8 @@ class Sparse4DModule(LightningDetector):
             for layer_idx in range(num_decoder_layers):
                 imgs_copy = imgs_dict.copy()
                 matched_indices = self.criterion.get_latest_matching_indices(layer_idx)
+                if matched_indices is None:
+                    continue
                 trajs = trajs_list[layer_idx]
                 concat_imgs = self._render_trajs_on_imgs(trajs, 
                                                     trajs[..., TrajParamIndex.HAS_OBJECT].sigmoid(),
@@ -535,8 +537,8 @@ class Sparse4DModule(LightningDetector):
         
         # # Log losses
         for name, value in loss_dict.items():
-            if name not in ["loss", "standard_decoder_loss", "cross_attention_decoder_loss"]:
-                continue
+            # if name not in ["loss", "standard_decoder_loss", "cross_attention_decoder_loss"]:
+            #     continue
             self.log(f"train/{name}", value, on_step=True, on_epoch=True, prog_bar=True, batch_size=batch['trajs'].shape[0], sync_dist=True)
             
         return loss_dict
