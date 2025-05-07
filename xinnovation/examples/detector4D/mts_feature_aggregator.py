@@ -101,7 +101,7 @@ class MultiviewTemporalSpatialFeatureAggregator(nn.Module):
         Returns:
             temporal_weights: Tensor[B, T]
         """
-        time_diffs = ego_states[...,EgoStateIndex.TIMESTAMP] - ego_states[:, -1, EgoStateIndex.TIMESTAMP] # [B, T]
+        time_diffs = ego_states[...,EgoStateIndex.STEADY_TIMESTAMP] - ego_states[:, -1, EgoStateIndex.STEADY_TIMESTAMP] # [B, T]
         # weight = exp(-time_diffs^2 / temporal_weight_decay)
         temporal_weights = torch.exp(-torch.square(time_diffs) / self.temporal_weight_decay * 3)
         temporal_weights = temporal_weights.to(ego_states.device)

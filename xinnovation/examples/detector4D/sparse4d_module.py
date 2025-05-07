@@ -131,8 +131,8 @@ class Sparse4DModule(LightningDetector):
             if T > 1:
                 for ib in range(B):
                     for it in range(T):
-                        # debug_message = f"{camera_id.name}: {ego_states[ib, it, EgoStateIndex.TIMESTAMP]:.2f}"
-                        debug_message = f"{ego_states[ib, it, EgoStateIndex.TIMESTAMP]:.2f}"
+                        # debug_message = f"{camera_id.name}: {ego_states[ib, it, EgoStateIndex.STEADY_TIMESTAMP]:.2f}"
+                        debug_message = f"{ego_states[ib, it, EgoStateIndex.STEADY_TIMESTAMP]:.2f}"
                         cv_color = color.cpu().numpy().tolist()
                         # Extract the tile and create a contiguous copy
                         tile = cimg[ib * H : (ib + 1) * H, it * W : (it + 1) * W].copy()

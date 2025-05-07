@@ -30,7 +30,7 @@ def get_transform_from_object_to_camera(
     # ob_i => ego_temporal => ego_i => camera
     # 1. get transformation T_ob_to_ego_temporal from sequential local object coordinates to temporal ego coordinates
     # the motion equation of object is built in temporal ego coordinates
-    dt = ego_states[:, :, EgoStateIndex.TIMESTAMP] - ego_states[:, T-1, EgoStateIndex.TIMESTAMP].unsqueeze(1) # [B, T]
+    dt = ego_states[:, :, EgoStateIndex.STEADY_TIMESTAMP] - ego_states[:, T-1, EgoStateIndex.STEADY_TIMESTAMP].unsqueeze(1) # [B, T]
     dt = dt.unsqueeze(1) # [B, 1, T]
     
     pos_x = trajs[..., TrajParamIndex.X].unsqueeze(-1)  # [B, N, 1]

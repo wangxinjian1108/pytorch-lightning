@@ -77,16 +77,18 @@ class CameraParamIndex(IntEnum):
 # EGO STATE RELATED
 class EgoStateIndex(IntEnum):
     TIMESTAMP = 0
-    X = 1
-    Y = 2
-    YAW = 3
-    PITCH_CORRECTION = 4
-    VX = 5
-    VY = 6
-    AX = 7
-    AY = 8
-    YAW_RATE = 9
-    END_OF_INDEX = 10    
+    STEADY_TIMESTAMP = 1
+    FRAME_ID = 2
+    X = 3
+    Y = 4
+    YAW = 5
+    PITCH_CORRECTION = 6
+    VX = 7
+    VY = 8
+    AX = 9
+    AY = 10
+    YAW_RATE = 11
+    END_OF_INDEX = 12  
     
 # OBSTACLE RELATED 
 class ObjectType(IntEnum):

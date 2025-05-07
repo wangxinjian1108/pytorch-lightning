@@ -35,15 +35,25 @@ def convert_to_numpy(matrix):
     Returns:
         numpy.ndarray: NumPy representation of the matrix
     """
+    # Convert to numpy if it's a tensor
     if isinstance(matrix, torch.Tensor):
         # Convert tensor to numpy array
         if matrix.is_cuda:
             matrix = matrix.cpu()
-        return matrix.detach().numpy()
+        matrix = matrix.detach().numpy()
     elif isinstance(matrix, np.ndarray):
-        return matrix
+        matrix = matrix.copy()  # Create a copy to avoid modifying the original
     else:
         raise TypeError("Input must be a NumPy array or PyTorch tensor")
+    
+    # Squeeze out dimensions of size 1
+    matrix = np.squeeze(matrix)
+    
+    # Check if the result is a 2D matrix
+    if matrix.ndim != 2:
+        raise ValueError(f"Matrix must be 2D after removing dimensions of size 1, but got shape {matrix.shape} with {matrix.ndim} dimensions")
+    
+    return matrix
 
 
 def visualize_matrix_interactive(matrix, title="Matrix Visualization", 

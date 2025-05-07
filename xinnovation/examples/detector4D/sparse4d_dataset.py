@@ -267,7 +267,9 @@ class Sparse4DMultiFrameDataset(Dataset):
                     ego_state = torch.zeros(EgoStateIndex.END_OF_INDEX)
                     # 确保时间戳保留小数精度
                     timestamp_float = float(ego_states[i]['timestamp'])
-                    ego_state[EgoStateIndex.TIMESTAMP] = timestamp_float - time_ref
+                    ego_state[EgoStateIndex.TIMESTAMP] = timestamp_float
+                    ego_state[EgoStateIndex.STEADY_TIMESTAMP] = timestamp_float - time_ref
+                    ego_state[EgoStateIndex.FRAME_ID] = ego_states[i]['frame_id']
                     qw, qx, qy, qz = ego_states[i]['qw'], ego_states[i]['qx'], ego_states[i]['qy'], ego_states[i]['qz']
                     rot_prev_ego_to_global = quaternion2RotationMatix(qw, qx, qy, qz)
                     t_prev_ego_to_global = torch.tensor([ego_states[i]['x'], ego_states[i]['y'], ego_states[i]['z']])
