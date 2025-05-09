@@ -192,8 +192,10 @@ class Sparse4DDetector(nn.Module):
             quality_predictions: List[torch.Tensor], predictions of quality
         """
         
-        predictions = []
-        quality_predictions = []
+        # Add the initial trajectories to the predictions
+        predictions = [trajs]
+        quality_predictions = [None]
+        
         tgts = self.query_embed.repeat(trajs.shape[0], 1, 1)
         
         for layer_idx in range(len(self.decoder_op_orders)):

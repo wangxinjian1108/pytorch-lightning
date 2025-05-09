@@ -253,12 +253,12 @@ class TrajectoryRefiner(nn.Module):
         # 2. Set regression part for cls part
         clamped_trajs[..., -self.cls_dim:] = cls_out
         
-        # return clamped_trajs, quality_out
+        return clamped_trajs, quality_out
         
-        refined_trajs2 = trajs.clone()
-        refined_trajs2[..., -self.cls_dim:] = cls_out
+        # refined_trajs2 = trajs.clone()
+        # refined_trajs2[..., -self.cls_dim:] = cls_out
         
-        return refined_trajs2, quality_out
+        # return refined_trajs2, quality_out
         
         
         

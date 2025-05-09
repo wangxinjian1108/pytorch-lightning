@@ -30,6 +30,7 @@ class Sparse4DLossWithDAC(nn.Module):
                     yrel_range: List[float],
                     is_sequential_model: bool,
                     val_debug_dir: str,
+                    use_coarse_trajs_to_match: bool = False,
                     use_normalized_motion_cost: bool = False,
                     ct_cost_thresh: float = 10,
                     ct_cls_loss_weight: float = 0.1,
@@ -48,6 +49,7 @@ class Sparse4DLossWithDAC(nn.Module):
         self.attribute_loss = LOSSES.build(attribute_loss)
         self.regression_loss = LOSSES.build(regression_loss)
 
+        self.use_coarse_trajs_to_match = use_coarse_trajs_to_match
         self.use_normalized_motion_cost = use_normalized_motion_cost
         self.ct_cost_thresh = ct_cost_thresh
         self.ct_cls_loss_weight = ct_cls_loss_weight
@@ -227,8 +229,13 @@ class Sparse4DLossWithDAC(nn.Module):
 
         # 1. Add loss of standard decoders
         standard_decoder_losses = {}
-        for layer_idx, pred_trajs in enumerate(outputs):
-            indices = self._compute_hungarian_match_results(gt_trajs, pred_trajs, valid_gt_nbs)
+        for layer_idx in range(1, len(outputs)):
+            refined_trajs = outputs[layer_idx]
+            if self.use_coarse_trajs_to_match:
+                # NOTE: if using the trajs before refinement to match, we could penalize correctly ti the feature fetched
+                indices = self._compute_hungarian_match_results(gt_trajs, outputs[layer_idx - 1], valid_gt_nbs)
+            else:
+                indices = self._compute_hungarian_match_results(gt_trajs, refined_trajs, valid_gt_nbs)
             # indices: batch of Tuple(np.ndarray, np.ndarray)
             if mode == "val" and step_idx == 0:
                 # save the matching history
@@ -239,11 +246,11 @@ class Sparse4DLossWithDAC(nn.Module):
                     batch_str = str(b).zfill(2)
                     epoch_str = str(self.epoch).zfill(3)
                     save_path = f'{self.val_debug_dir}/matched_trajs_on_bev/batch{batch_str}_epoch{epoch_str}_layer{layer_idx}.png'
-                    visualize_matched_trajs_on_bev(gt_trajs[b], pred_trajs[b], gt_idx, pred_idx, save_path)
+                    visualize_matched_trajs_on_bev(gt_trajs[b], refined_trajs[b], gt_idx, pred_idx, save_path)
             
             # 1.1 create matched mask and reordered gts
-            matched_mask = torch.zeros(B, N, dtype=torch.bool, device=pred_trajs.device)
-            gt_trajs_reordered = torch.zeros_like(pred_trajs)
+            matched_mask = torch.zeros(B, N, dtype=torch.bool, device=refined_trajs.device)
+            gt_trajs_reordered = torch.zeros_like(refined_trajs)
             num_positive_preds = 0
 
             for b, indice in enumerate(indices):
@@ -258,13 +265,13 @@ class Sparse4DLossWithDAC(nn.Module):
             # 1.2 calculate the has object classification loss for all the preds
             # last_idx = TrajParamIndex.END_OF_INDEX if layer_idx > 0 else TrajParamIndex.HAS_OBJECT + 1
             last_idx = TrajParamIndex.HAS_OBJECT + 1
-            obj_loss = self.has_object_loss(pred_trajs[:, :, TrajParamIndex.HAS_OBJECT:last_idx].flatten(end_dim=1),
+            obj_loss = self.has_object_loss(refined_trajs[:, :, TrajParamIndex.HAS_OBJECT:last_idx].flatten(end_dim=1),
                                             gt_trajs_reordered[:, :, TrajParamIndex.HAS_OBJECT:last_idx].flatten(end_dim=1))
             standard_decoder_losses[f'layer_{layer_idx}_obj_loss'] = obj_loss * layer_loss_weight
             if num_positive_preds > 0:
                 # 1.3 calculate loss for positive preds
                 # from [B, N, TrajParamIndex.END_OF_INDEX] to [num_positive_preds, TrajParamIndex.END_OF_INDEX]
-                positive_preds = pred_trajs[matched_mask] 
+                positive_preds = refined_trajs[matched_mask] 
                 positive_gts = gt_trajs_reordered[matched_mask]
                 
                 # if layer_idx == 0:
@@ -294,13 +301,14 @@ class Sparse4DLossWithDAC(nn.Module):
         
         if c_outputs is not None and self.enable_dac_loss:
             cross_attention_decoder_losses = {}
-            for layer_idx, pred_trajs in enumerate(c_outputs[1:]):
+            for layer_idx in range(2, len(c_outputs)):
+                refined_trajs = c_outputs[layer_idx]
                 # NOTE: layer 0 is the same result as the standard decoders, so we skip it
                 weight = self.layer_loss_weights[layer_idx]
-                matched_preds_idx, matched_gt_idx, unmatched_preds_idx = self._compute_one_to_n_match_results(gt_trajs, pred_trajs, valid_gt_nbs)
-                matched_preds = pred_trajs[matched_preds_idx[0], matched_preds_idx[1]] # [num_matched_preds, TrajParamIndex.END_OF_INDEX]
+                matched_preds_idx, matched_gt_idx, unmatched_preds_idx = self._compute_one_to_n_match_results(gt_trajs, refined_trajs, valid_gt_nbs)
+                matched_preds = refined_trajs[matched_preds_idx[0], matched_preds_idx[1]] # [num_matched_preds, TrajParamIndex.END_OF_INDEX]
                 matched_gts = gt_trajs[matched_gt_idx[0], matched_gt_idx[1]] # [num_matched_preds, TrajParamIndex.END_OF_INDEX]
-                unmatched_preds = pred_trajs[unmatched_preds_idx[0], unmatched_preds_idx[1]] # [num_unmatched_preds, TrajParamIndex.END_OF_INDEX]
+                unmatched_preds = refined_trajs[unmatched_preds_idx[0], unmatched_preds_idx[1]] # [num_unmatched_preds, TrajParamIndex.END_OF_INDEX]
                 if matched_preds.shape[0] > 0:
                     # 2.1 calculate the classification loss for matched preds
                     cross_attention_decoder_losses[f'layer_{layer_idx}_cls_loss_ct'] = self.has_object_loss(matched_preds[:, TrajParamIndex.HAS_OBJECT],
