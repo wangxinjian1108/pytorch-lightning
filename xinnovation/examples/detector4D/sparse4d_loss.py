@@ -11,7 +11,7 @@ from typing import Tuple, Dict, List, Any
 from torch.nn import functional as F
 import numpy as np
 from xinnovation.src.utils.debug_utils import check_nan_or_inf
-from xinnovation.src.utils.visualize_utils import visualize_matrix_interactive, save_matrix_heatmap, visualize_matched_trajs_on_bev
+from xinnovation.src.utils.visualize_utils import visualize_matrix_interactive, save_matrix_heatmap, visualize_matched_trajs_on_bev, visualize_refined_trajs_on_bev
 import os, sys
 
 check_abnormal = False
@@ -61,6 +61,7 @@ class Sparse4DLossWithDAC(nn.Module):
         
         self.val_debug_dir = val_debug_dir
         os.makedirs(f'{val_debug_dir}/matched_trajs_on_bev', exist_ok=True)
+        os.makedirs(f'{val_debug_dir}/refined_trajs_on_bev', exist_ok=True)
         self.epoch = 0
         self.enable_dac_loss = enable_dac_loss
         
@@ -230,10 +231,10 @@ class Sparse4DLossWithDAC(nn.Module):
         # 1. Add loss of standard decoders
         standard_decoder_losses = {}
         for layer_idx in range(1, len(outputs)):
-            refined_trajs = outputs[layer_idx]
+            coarse_trajs, refined_trajs = outputs[layer_idx - 1], outputs[layer_idx]
             if self.use_coarse_trajs_to_match:
                 # NOTE: if using the trajs before refinement to match, we could penalize correctly ti the feature fetched
-                indices = self._compute_hungarian_match_results(gt_trajs, outputs[layer_idx - 1], valid_gt_nbs)
+                indices = self._compute_hungarian_match_results(gt_trajs, coarse_trajs, valid_gt_nbs)
             else:
                 indices = self._compute_hungarian_match_results(gt_trajs, refined_trajs, valid_gt_nbs)
             # indices: batch of Tuple(np.ndarray, np.ndarray)
@@ -246,7 +247,9 @@ class Sparse4DLossWithDAC(nn.Module):
                     batch_str = str(b).zfill(2)
                     epoch_str = str(self.epoch).zfill(3)
                     save_path = f'{self.val_debug_dir}/matched_trajs_on_bev/batch{batch_str}_epoch{epoch_str}_layer{layer_idx}.png'
-                    visualize_matched_trajs_on_bev(gt_trajs[b], refined_trajs[b], gt_idx, pred_idx, save_path)
+                    bev_range = [-100, 100, -12, 12]
+                    visualize_matched_trajs_on_bev(gt_trajs[b], refined_trajs[b], gt_idx, pred_idx, save_path, bev_range)
+                    visualize_refined_trajs_on_bev(coarse_trajs[b], refined_trajs[b], save_path.replace("matched_trajs_on_bev", "refined_trajs_on_bev"), bev_range)
             
             # 1.1 create matched mask and reordered gts
             matched_mask = torch.zeros(B, N, dtype=torch.bool, device=refined_trajs.device)

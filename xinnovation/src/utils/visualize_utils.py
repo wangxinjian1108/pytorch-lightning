@@ -18,7 +18,7 @@ from matplotlib.widgets import Slider, Button
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import torch
 from xinnovation.src.core.dataclass import TrajParamIndex
-from matplotlib.patches import Rectangle, Polygon
+from matplotlib.patches import Rectangle, Polygon, Patch
 import matplotlib.transforms as transforms
 from enum import IntEnum
 import os
@@ -27,6 +27,7 @@ import os
 __all__ = [
     'convert_to_numpy',
     'visualize_matched_trajs_on_bev',
+    'visualize_refined_trajs_on_bev',
     'visualize_matrix_interactive',
     'save_matrix_heatmap'
 ]
@@ -63,7 +64,7 @@ def convert_to_numpy(matrix):
     return matrix
 
     
-def create_polygon_from_traj(x, y, length, width, yaw, edgecolor, facecolor, alpha, linewidth):
+def create_polygon_from(x, y, length, width, yaw, edgecolor, facecolor, alpha, linewidth):
     # 局部坐标下的四个角点（逆时针）
     half_l, half_w = length / 2, width / 2
     corners = np.array([
@@ -97,7 +98,24 @@ def create_polygon_from_traj(x, y, length, width, yaw, edgecolor, facecolor, alp
         linewidth=linewidth
     )
 
-def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_path, range=[-100,100,-12,12]):
+def create_polygon_from_traj(traj, edgecolor, facecolor, alpha, linewidth):
+    # Extract relevant parameters
+    x = traj[TrajParamIndex.X]
+    y = traj[TrajParamIndex.Y]
+    length = traj[TrajParamIndex.LENGTH]
+    width = traj[TrajParamIndex.WIDTH]
+    
+    # Calculate yaw angle from cos and sin
+    cos_yaw = traj[TrajParamIndex.COS_YAW]
+    sin_yaw = traj[TrajParamIndex.SIN_YAW]
+    yaw = np.arctan2(sin_yaw, cos_yaw)
+    
+    # if traj[TrajParamIndex.VX] > 0.1:
+    #     yaw = np.arctan2(TrajParamIndex.VY, TrajParamIndex.VX)
+    
+    return create_polygon_from(x, y, length, width, yaw, edgecolor, facecolor, alpha, linewidth)
+
+def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_path, bev_range=[-100,100,-12,12]):
     """
     Visualize ground truth and predicted trajectories on BEV with matching information.
     
@@ -123,9 +141,9 @@ def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_
     # Create figure and axis
     fig, ax = plt.subplots(figsize=(10, 40))
     
-    # Set the BEV range limits
-    x_min, x_max = range[0], range[1]
-    y_min, y_max = range[2], range[3]
+    # Set the BEV bev_range limits
+    x_min, x_max = bev_range[0], bev_range[1]
+    y_min, y_max = bev_range[2], bev_range[3]
     
     # Set axis limits for BEV display
     ax.set_xlim(y_max, y_min)  # Note: in BEV, x-axis typically represents y in vehicle coordinates
@@ -160,7 +178,7 @@ def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_
             # if traj[TrajParamIndex.VX] > 0.1:
             # yaw = np.arctan2(TrajParamIndex.VY, TrajParamIndex.VX)
             
-            poly = create_polygon_from_traj(x, y, length, width, yaw, gt_color, gt_color, gt_alpha, 1.5)
+            poly = create_polygon_from(x, y, length, width, yaw, gt_color, gt_color, gt_alpha, 1.5)
             ax.add_patch(poly)
             
             # Add ID text to the center of the box
@@ -193,7 +211,7 @@ def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_
         color = pred_color if i in matched_pred_indices else unmatched_pred_color
         alpha = pred_alpha if i in matched_pred_indices else unmatched_alpha
         
-        poly = create_polygon_from_traj(x, y, length, width, yaw, color, color, alpha, 1.5)
+        poly = create_polygon_from(x, y, length, width, yaw, color, color, alpha, 1.5)
         ax.add_patch(poly)
         
         # Add ID text to the center of the box
@@ -208,11 +226,6 @@ def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_
     ax.set_xlabel("Y (meters)")
     ax.set_ylabel("X (meters)")
     
-    # 画点并设置图例标签
-    # ax.scatter([5, 10], [10, 15], color='blue', s=50, marker='o', label='Matched Prediction')
-    # ax.scatter([-5, -10], [10, 20], color='gray', s=50, marker='x', label='Unmatched Prediction')
-    # ax.scatter([3, 6], [5, 12], color='green', s=50, marker='s', label='Ground Truth')
-    
     legend_boxes = [
         Rectangle((0, 0), 1, 1, edgecolor=gt_color, facecolor=gt_color, label='Ground Truth'),
         Rectangle((0, 0), 1, 1, edgecolor=pred_color, facecolor=pred_color, label='Matched Prediction'),
@@ -222,17 +235,75 @@ def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_
     # 添加 legend 到 ax
     ax.legend(handles=legend_boxes, loc='upper right')
     
-    # Add a legend
-    from matplotlib.patches import Patch
-    legend_elements = [
-        Patch(facecolor=gt_color, edgecolor=gt_color, alpha=gt_alpha, label='Matched GT'),
-        Patch(facecolor=pred_color, edgecolor=pred_color, alpha=pred_alpha, label='Matched Pred'),
-        Patch(facecolor=unmatched_pred_color, edgecolor=unmatched_pred_color, alpha=unmatched_alpha, label='Unmatched Pred')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right')
+    # Save the figure
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+    print(f"BEV visualization saved to: {os.path.abspath(save_path)}")
     
-    # Make sure directory exists
-    # os.makedirs(os.path.dirname(os.path.abspath(save_path)) if os.path.dirname(save_path) else '.', exist_ok=True)
+
+def visualize_refined_trajs_on_bev(coarse_trajs, refined_trajs, save_path, bev_range=[-100,100,-12,12]):
+    """
+    Visualize the coarse and refined trajs on BEV
+    
+    Args:
+        coarse_trajs: Coarse Trajs before refinemnt [N, TrajParamIndex.END_OF_INDEX]
+        refined_trajs: Refined Trajs after refinement [N, TrajParamIndex.END_OF_INDEX]
+        save_path: Path to save the visualization
+    """
+    # convert to numpy array
+    if isinstance(coarse_trajs, torch.Tensor):
+        coarse_trajs = coarse_trajs.detach().cpu().numpy()
+    
+    if isinstance(refined_trajs, torch.Tensor):
+        refined_trajs = refined_trajs.detach().cpu().numpy()
+
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=(10, 40))
+    
+    # Set the BEV range limits
+    x_min, x_max = bev_range[0], bev_range[1]
+    y_min, y_max = bev_range[2], bev_range[3]
+    
+    # Set axis limits for BEV display
+    ax.set_xlim(y_max, y_min)  # Note: in BEV, x-axis typically represents y in vehicle coordinates
+    ax.set_ylim(x_min, x_max)  # and y-axis represents x in vehicle coordinates
+    
+    # Define transparency levels
+    coarse_color = 'lightgray'
+    refined_color = 'green'
+    coarse_alpha = 0.7
+    refined_alpha = 0.5
+    
+    # Draw coarse trajectories
+    for i in range(len(coarse_trajs)):
+        coarse_traj, refined_traj = coarse_trajs[i], refined_trajs[i]
+        poly1 = create_polygon_from_traj(coarse_traj, coarse_color, coarse_color, coarse_alpha, 1)
+        poly2 = create_polygon_from_traj(refined_traj, refined_color, refined_color, refined_alpha, 1)
+        ax.add_patch(poly1)
+        ax.add_patch(poly2)
+        
+        # add id text
+        x1, y1 = coarse_traj[TrajParamIndex.X], coarse_traj[TrajParamIndex.Y]
+        ax.text(y1, x1, f"{i}", color='white', fontweight='bold', ha='center', va='center')
+        
+        # connect with a line
+        x2, y2 = refined_traj[TrajParamIndex.X], refined_traj[TrajParamIndex.Y]
+        ax.plot([y1, y2], [x1, x2], 'r--', alpha=0.5)
+
+    # Add grid
+    ax.grid(True, linestyle='--', alpha=0.6)
+    
+    # Set title and labels
+    ax.set_title(f"BEV Trajectory Visualization From Coarse Trajs to Refined Trajs")
+    ax.set_xlabel("Y (meters)")
+    ax.set_ylabel("X (meters)")
+    
+    legend_boxes = [
+        Rectangle((0, 0), 1, 1, edgecolor=coarse_color, facecolor=coarse_color, label='Coarse Traj'),
+        Rectangle((0, 0), 1, 1, edgecolor=refined_color, facecolor=refined_color, label='Refined Traj')
+    ]
+    ax.legend(handles=legend_boxes, loc='upper right')
     
     # Save the figure
     plt.tight_layout()
