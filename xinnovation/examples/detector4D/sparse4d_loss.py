@@ -39,6 +39,7 @@ class Sparse4DLossWithDAC(nn.Module):
         super().__init__()
         self.xrel_range = xrel_range
         self.yrel_range = yrel_range
+        self.bev_range = xrel_range + self.yrel_range
 
         # store matching history of the first batch of different layers
         self.layer_loss_weights = layer_loss_weights
@@ -247,9 +248,9 @@ class Sparse4DLossWithDAC(nn.Module):
                     batch_str = str(b).zfill(2)
                     epoch_str = str(self.epoch).zfill(3)
                     save_path = f'{self.val_debug_dir}/matched_trajs_on_bev/batch{batch_str}_epoch{epoch_str}_layer{layer_idx}.png'
-                    bev_range = [-100, 100, -12, 12]
-                    visualize_matched_trajs_on_bev(gt_trajs[b], refined_trajs[b], gt_idx, pred_idx, save_path, bev_range)
-                    visualize_refined_trajs_on_bev(coarse_trajs[b], refined_trajs[b], save_path.replace("matched_trajs_on_bev", "refined_trajs_on_bev"), bev_range)
+                    fig_info = f'Batch {b}, Epoch {self.epoch}, Decoder Layer {layer_idx}'
+                    visualize_matched_trajs_on_bev(gt_trajs[b], coarse_trajs[b], refined_trajs[b], gt_idx, pred_idx, save_path, self.bev_range , fig_info, self.use_coarse_trajs_to_match)
+                    visualize_refined_trajs_on_bev(coarse_trajs[b], refined_trajs[b], save_path.replace("matched_trajs_on_bev", "refined_trajs_on_bev"), self.bev_range , fig_info)
             
             # 1.1 create matched mask and reordered gts
             matched_mask = torch.zeros(B, N, dtype=torch.bool, device=refined_trajs.device)

@@ -7,6 +7,7 @@ from xinnovation.src.core import LIGHTNING_MODULE, SourceCameraId, TrajParamInde
 from xinnovation.src.components.lightning_module import LightningDetector
 from xinnovation.src.utils.math_utils import sample_bbox_edge_points
 from xinnovation.src.utils.pose_transform import project_points_to_image
+from xinnovation.src.utils.visualize_utils import generate_video_from_dir
 from .sparse4d_detector import Sparse4DDetector
 from .sparse4d_loss import Sparse4DLossWithDAC
 from .sparse4d_dataset import TrainingSample, CAMERA_ID_LIST
@@ -243,6 +244,18 @@ class Sparse4DModule(LightningDetector):
                 print(f"Saved matching visualization for Layer {layer_idx}, Batch {batch_idx}")
         
         print(f"Matching visualization completed. Results saved to {vis_dir}")
+    
+    def _visualize_trajs_on_bev(self):
+        """Generate the video of the predicted trajectories."""
+        if not self.debug_config.visualize_validation_results:
+            return
+        print("Generating the video of the predicted trajectories...")
+        imgs_dir1 = f'{self.criterion.val_debug_dir}/matched_trajs_on_bev'
+        imgs_dir2 = f'{self.criterion.val_debug_dir}/refined_trajs_on_bev'
+               
+        generate_video_from_dir(imgs_dir1, os.path.join(self.debug_config.visualize_validation_results_dir, "matched_trajs_on_bev.mp4"), 10)
+        generate_video_from_dir(imgs_dir2, os.path.join(self.debug_config.visualize_validation_results_dir, "refined_trajs_on_bev.mp4"), 10)
+        print("Finished generating BEV matching results video")
 
     def _generate_validation_trajs_video(self):
         """Generate the video of the predicted trajectories."""
@@ -407,6 +420,7 @@ class Sparse4DModule(LightningDetector):
             # self._generate_validation_trajs_video()
             # self._generate_matched_trajs_video()
             self._visualize_matching_results()
+            self._visualize_trajs_on_bev()
         
     def on_validation_end(self):
         """On validation end, visualize the matching history."""
