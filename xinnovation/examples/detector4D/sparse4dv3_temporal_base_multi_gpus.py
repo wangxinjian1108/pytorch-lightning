@@ -270,6 +270,7 @@ lightning_module = dict(
     ),
     loss=dict(
         type="Sparse4DLossWithDAC",
+        val_debug_dir=f"{work_dir}/xinnovation_validation_results",
         xrel_range=xrel_range,
         yrel_range=yrel_range,
         layer_loss_weights=[0.5, 0.6, 0.6, 0.7, 0.7, 0.8, 0.9],

@@ -6,6 +6,8 @@ from xinnovation.examples.detector4D.sparse4d_dataset import CameraGroupConfig
 # ============================== 1. Base Config ==============================
 query_dim = 256
 seq_length = 1
+sliding_window_size = 1
+sliding_window_stride = 1
 dropout = 0.1
 num_groups = 8
 num_decoder = 1
@@ -13,16 +15,16 @@ num_classes = TrajParamIndex.END_OF_INDEX - TrajParamIndex.HAS_OBJECT
 use_temp_attention = False
 with_quality_estimation = False
 wandb_project_name = "sparse4d_v1"
-exp_name = "sparse4dv3_temporal_base"
-work_dir = "/home/xinjian.wang/pytorch-lightning"
+exp_name = "sparse4dv3_temporal_base_single_frame"
+work_dir = "/home/xinjian/Code/pytorch-lightning"
 save_dir = f"{work_dir}/xinnovation_checkpoints/{exp_name}"
 checkpoint_dir = f"{work_dir}/xinnovation_checkpoints/{exp_name}"
-epochs = 5
+epochs = 2
 accumulate_grad_batches = 1
 resume = False
 shuffle = False
 batch_size = 1
-devices = [2]
+devices = [0]
 xrel_range = [-60.0, 80.0]
 yrel_range = [-10.0, 10.0]
 use_log_dimension = False
@@ -271,6 +273,7 @@ lightning_module = dict(
     ),
     loss=dict(
         type="Sparse4DLossWithDAC",
+        val_debug_dir=f"{work_dir}/xinnovation_validation_results",
         xrel_range=xrel_range,
         yrel_range=yrel_range,
         layer_loss_weights=[0.5, 0.6, 0.6, 0.7, 0.7, 0.8, 0.9],

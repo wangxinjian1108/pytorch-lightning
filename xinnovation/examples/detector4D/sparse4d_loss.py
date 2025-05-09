@@ -11,10 +11,11 @@ from typing import Tuple, Dict, List, Any
 from torch.nn import functional as F
 import numpy as np
 from xinnovation.src.utils.debug_utils import check_nan_or_inf
-from xinnovation.src.utils.visualize_utils import visualize_matrix_interactive, save_matrix_heatmap
-
+from xinnovation.src.utils.visualize_utils import visualize_matrix_interactive, save_matrix_heatmap, visualize_matched_trajs_on_bev
+import os, sys
 
 check_abnormal = False
+debug_loss_calculation = True
 
 __all__ = ["Sparse4DLossWithDAC"]
 
@@ -28,6 +29,7 @@ class Sparse4DLossWithDAC(nn.Module):
                     xrel_range: List[float],
                     yrel_range: List[float],
                     is_sequential_model: bool,
+                    val_debug_dir: str,
                     use_normalized_motion_cost: bool = False,
                     ct_cost_thresh: float = 10,
                     ct_cls_loss_weight: float = 0.1,
@@ -54,8 +56,12 @@ class Sparse4DLossWithDAC(nn.Module):
         self.is_sequential_model = is_sequential_model
         if is_sequential_model:
             self.regression_loss_index.extend([TrajParamIndex.VX, TrajParamIndex.VY, TrajParamIndex.AX, TrajParamIndex.AY])
+        
+        self.val_debug_dir = val_debug_dir
+        os.makedirs(f'{val_debug_dir}/matched_trajs_on_bev', exist_ok=True)
         self.epoch = 0
         self.enable_dac_loss = enable_dac_loss
+        
 
     def update_epoch(self, epoch: int):
         self.epoch = epoch
@@ -120,7 +126,8 @@ class Sparse4DLossWithDAC(nn.Module):
         return matched_pred, matched_gt, unmatched_pred
         
     @torch.no_grad()
-    def _compute_hungarian_match_results(self, gt_trajs: torch.Tensor, pred_trajs: torch.Tensor, valid_gt_nbs: torch.Tensor) -> torch.Tensor:
+    def _compute_hungarian_match_results(self, gt_trajs: torch.Tensor, pred_trajs: torch.Tensor, 
+                                         valid_gt_nbs: torch.Tensor) -> List[Tuple[np.ndarray, np.ndarray]]:
         """
         Compute the matching cost matrix between ground truth trajectories and predicted trajectories.
         
@@ -153,7 +160,7 @@ class Sparse4DLossWithDAC(nn.Module):
             dimension_cost = 0.5 * (1 + torch.tanh(10 * (dimension_cost - 2))) # (B, M, N)
         # giou_loss_matrix = 0 # TODO: define the giou loss in 4D space(two trajectories)
         regression_cost = center_cost * 0.7 + velocity_cost * 0.2 + dimension_cost * 0.1
-
+        
         # NOTE: cost function choice
         # 1. center_cost use `1 - exp(-center_cost / 30)`, which is sensitive to small center distance but not sensitive to large center distance
         # 2. velocity_cost use `0.5 * (1 + tanh(10 * (velocity_cost - 2)))`, which is sensitive to small velocity difference but not sensitive to large velocity difference
@@ -168,15 +175,23 @@ class Sparse4DLossWithDAC(nn.Module):
         # 2. calculate the indices
         indices = []
         for b in range(B):
-            origin_indice = linear_sum_assignment(cost_matrix[b].detach().cpu().numpy())
+            # only first valid_gt_nbs[b] of gt trajs is valid
+            masked_cost_matrix = cost_matrix[b][:valid_gt_nbs[b], ...]
+            if debug_loss_calculation:
+                masked_gt_trajs = gt_trajs[b][:valid_gt_nbs[b], :TrajParamIndex.Z + 1]
+                masked_center_cost = center_cost[b][:valid_gt_nbs[b], ...]
+                # visualize_matrix_interactive(masked_cost_matrix)
+                # visualize_matrix_interactive(masked_center_cost)
+            gt_idx, pred_idx = linear_sum_assignment(masked_cost_matrix.detach().cpu().numpy())
             # 2.1 remove the fp matches (M trajs is the pre-defined number of gt trajs, however, the real number of gt trajs is less than M)
-            real_gt_count = valid_gt_nbs[b].item()
-            gt_idx, pred_idx = origin_indice
-            # 只保留前k个匹配对
-            k = min(real_gt_count, len(gt_idx))
-            gt_idx = gt_idx[:k]
-            pred_idx = pred_idx[:k]
+            # gt_idx, pred_idx = masked_indice
+            # # 只保留前k个匹配对
+            # k = min(real_gt_count, len(gt_idx))
+            # gt_idx = gt_idx[:k]
+            # pred_idx = pred_idx[:k]
+            # # TODO: 这里可能有空匹配的case出现
             indices.append((gt_idx, pred_idx))
+                
         return indices
     
     def _save_matching_history(self, layer_idx: int, indices: Tuple[np.ndarray, np.ndarray]):
@@ -214,8 +229,17 @@ class Sparse4DLossWithDAC(nn.Module):
         standard_decoder_losses = {}
         for layer_idx, pred_trajs in enumerate(outputs):
             indices = self._compute_hungarian_match_results(gt_trajs, pred_trajs, valid_gt_nbs)
+            # indices: batch of Tuple(np.ndarray, np.ndarray)
             if mode == "val" and step_idx == 0:
+                # save the matching history
                 self._save_matching_history(layer_idx, indices)
+                # visualize the matched trajs on bev
+                for b, indice in enumerate(indices):
+                    gt_idx, pred_idx = indice
+                    batch_str = str(b).zfill(2)
+                    epoch_str = str(self.epoch).zfill(3)
+                    save_path = f'{self.val_debug_dir}/matched_trajs_on_bev/batch{batch_str}_epoch{epoch_str}_layer{layer_idx}.png'
+                    visualize_matched_trajs_on_bev(gt_trajs[b], pred_trajs[b], gt_idx, pred_idx, save_path)
             
             # 1.1 create matched mask and reordered gts
             matched_mask = torch.zeros(B, N, dtype=torch.bool, device=pred_trajs.device)
