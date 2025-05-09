@@ -19,7 +19,7 @@ exp_name = "sparse4dv3_temporal_base_single_frame"
 work_dir = "/home/xinjian/Code/pytorch-lightning"
 save_dir = f"{work_dir}/xinnovation_checkpoints/{exp_name}"
 checkpoint_dir = f"{work_dir}/xinnovation_checkpoints/{exp_name}"
-epochs = 2
+epochs = 50
 accumulate_grad_batches = 1
 resume = False
 shuffle = False
@@ -28,7 +28,7 @@ devices = [0]
 xrel_range = [-60.0, 80.0]
 yrel_range = [-10.0, 10.0]
 use_log_dimension = False
-detr3d_style_decoding_xyz = True
+detr3d_style_decoding_xyz = False
 # devices = [0]
 
 # ============================== 2. Trainer Config ==============================
@@ -303,7 +303,7 @@ lightning_module = dict(
         ct_cls_loss_weight=0.1,
         is_sequential_model=seq_length > 1,
         enable_dac_loss=False,
-        use_coarse_trajs_to_match=False
+        use_coarse_trajs_to_match=True
     ),
     debug_config = dict(
         visualize_validation_results=True,

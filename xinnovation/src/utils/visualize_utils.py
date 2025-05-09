@@ -21,16 +21,30 @@ from xinnovation.src.core.dataclass import TrajParamIndex
 from matplotlib.patches import Rectangle, Polygon, Patch
 import matplotlib.transforms as transforms
 from enum import IntEnum
-import os
+import os, glob, shutil
 
 
 __all__ = [
-    'convert_to_numpy',
+    'generate_video_from_dir',
     'visualize_matched_trajs_on_bev',
     'visualize_refined_trajs_on_bev',
     'visualize_matrix_interactive',
     'save_matrix_heatmap'
 ]
+
+
+def generate_video_from_dir(dir, video_path, fps=10, post_fix="png"):
+    img_files = glob.glob(os.path.join(dir, f"*.{post_fix}"))
+    img_files.sort()
+    temp_dir = os.path.join(dir, "temp_frames")
+    os.makedirs(temp_dir, exist_ok=True)
+    for i, img_file in enumerate(img_files):
+        frame_path = os.path.join(temp_dir, f"frame_{i:04d}.png")
+        shutil.copy2(img_file, frame_path)
+    ffmpeg_cmd = f"ffmpeg -y -framerate {fps} -i {temp_dir}/frame_%04d.png -c:v libx264 -pix_fmt yuv420p {video_path}"
+    os.system(ffmpeg_cmd)
+    print(f"Generated video: {video_path}")
+    shutil.rmtree(temp_dir)
 
 
 def convert_to_numpy(matrix):
@@ -115,13 +129,14 @@ def create_polygon_from_traj(traj, edgecolor, facecolor, alpha, linewidth):
     
     return create_polygon_from(x, y, length, width, yaw, edgecolor, facecolor, alpha, linewidth)
 
-def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_path, bev_range=[-100,100,-12,12]):
+def visualize_matched_trajs_on_bev(gt_trajs, coarse_trajs, refined_trajs, gt_idx, pred_idx, save_path, bev_range=[-100,100,-12,12], infomation=None, pre_match=True):
     """
     Visualize ground truth and predicted trajectories on BEV with matching information.
     
     Args:
         gt_trajs: Ground truth trajectories [M, TrajParamIndex.END_OF_INDEX]
-        pred_trajs: Predicted trajectories [N, TrajParamIndex.END_OF_INDEX]
+        coarse_trajs: Predicted trajectories [N, TrajParamIndex.END_OF_INDEX]
+        refined_trajs: Predicted trajectories [N, TrajParamIndex.END_OF_INDEX]
         gt_idx: List of matched ground truth indices
         pred_idx: List of matched prediction indices (corresponding to gt_idx)
         save_path: Path to save the visualization
@@ -130,16 +145,34 @@ def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_
     if isinstance(gt_trajs, torch.Tensor):
         gt_trajs = gt_trajs.detach().cpu().numpy()
     
-    if isinstance(pred_trajs, torch.Tensor):
-        pred_trajs = pred_trajs.detach().cpu().numpy()
+    if isinstance(coarse_trajs, torch.Tensor):
+        coarse_trajs = coarse_trajs.detach().cpu().numpy()
+        
+    if isinstance(refined_trajs, torch.Tensor):
+        refined_trajs = refined_trajs.detach().cpu().numpy()
         
     # Define colors
     gt_color = 'green'
-    pred_color = 'blue'
-    unmatched_pred_color = 'black'
+    refined_color = 'blue'
+    unmatched_refined_color = 'black'
+    coarse_color = 'yellow'
+    fp_traj_color = 'red'
     
     # Create figure and axis
     fig, ax = plt.subplots(figsize=(10, 40))
+    
+    # Add info
+    if infomation is not None:
+        ax.text(
+            0.01, 0.99,  # x=0.01, y=0.99 表示轴范围的左上角
+            infomation,
+            transform=ax.transAxes,  # 保证是相对于坐标轴大小，而不是数据坐标
+            fontsize=16,           # 字体大小（比默认大）
+            fontweight='bold',     # 加粗
+            color='red',
+            verticalalignment='top',
+            horizontalalignment='left'
+        )
     
     # Set the BEV bev_range limits
     x_min, x_max = bev_range[0], bev_range[1]
@@ -151,8 +184,8 @@ def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_
     
     # Define transparency levels
     gt_alpha = 0.7
-    pred_alpha = 0.5
-    unmatched_alpha = 0.3
+    refined_alpha = 0.5
+    unmatched_refined_alpha = 0.3
     
     # Create sets for O(1) lookup
     matched_gt_indices = set(gt_idx)
@@ -164,75 +197,64 @@ def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_
     # Draw matched ground truth trajectories
     for i, traj in enumerate(gt_trajs):
         if i in matched_gt_indices:
-            # Extract relevant parameters
-            x = traj[TrajParamIndex.X]
-            y = traj[TrajParamIndex.Y]
-            length = traj[TrajParamIndex.LENGTH]
-            width = traj[TrajParamIndex.WIDTH]
-            
-            # Calculate yaw angle from cos and sin
-            cos_yaw = traj[TrajParamIndex.COS_YAW]
-            sin_yaw = traj[TrajParamIndex.SIN_YAW]
-            yaw = np.arctan2(sin_yaw, cos_yaw)
-            
-            # if traj[TrajParamIndex.VX] > 0.1:
-            # yaw = np.arctan2(TrajParamIndex.VY, TrajParamIndex.VX)
-            
-            poly = create_polygon_from(x, y, length, width, yaw, gt_color, gt_color, gt_alpha, 1.5)
+            poly = create_polygon_from_traj(traj, gt_color, gt_color, gt_alpha, 1.5)
             ax.add_patch(poly)
             
             # Add ID text to the center of the box
+            x, y = traj[TrajParamIndex.X], traj[TrajParamIndex.Y]
             ax.text(y, x, f"GT{i}", color='white', fontweight='bold', ha='center', va='center')
             
             # Connect with matched prediction using a line
             matched_pred_id = gt_to_pred_map[i]
-            matched_pred = pred_trajs[matched_pred_id]
+            matched_pred = refined_trajs[matched_pred_id]
+            if pre_match:
+                matched_pred = coarse_trajs[matched_pred_id]
             pred_x = matched_pred[TrajParamIndex.X]
             pred_y = matched_pred[TrajParamIndex.Y]
             ax.plot([y, pred_y], [x, pred_x], 'r--', alpha=0.5)
     
     # Draw all prediction trajectories
-    for i, traj in enumerate(pred_trajs):
-        # Extract relevant parameters
-        x = traj[TrajParamIndex.X]
-        y = traj[TrajParamIndex.Y]
-        length = traj[TrajParamIndex.LENGTH]
-        width = traj[TrajParamIndex.WIDTH]
-        
-        # Calculate yaw angle from cos and sin
-        cos_yaw = traj[TrajParamIndex.COS_YAW]
-        sin_yaw = traj[TrajParamIndex.SIN_YAW]
-        yaw = np.arctan2(sin_yaw, cos_yaw)
-        
-        # if traj[TrajParamIndex.VX] > 0.1:
-        #     yaw = np.arctan2(TrajParamIndex.VY, TrajParamIndex.VX)
-        
+    for i, traj in enumerate(refined_trajs):
         # Determine color based on matching status
-        color = pred_color if i in matched_pred_indices else unmatched_pred_color
-        alpha = pred_alpha if i in matched_pred_indices else unmatched_alpha
+        color = refined_color if i in matched_pred_indices else unmatched_refined_color
+        alpha = refined_alpha if i in matched_pred_indices else unmatched_refined_alpha
         
-        poly = create_polygon_from(x, y, length, width, yaw, color, color, alpha, 1.5)
+        poly = create_polygon_from_traj(traj, color, color, alpha, 1.5)
         ax.add_patch(poly)
         
         # Add ID text to the center of the box
-        text_color = 'lightblue' if i in matched_pred_indices else 'lightgray'
+        text_color = 'lightgray' if traj[TrajParamIndex.HAS_OBJECT] < 0.5 else fp_traj_color
+        if i in matched_pred_indices:
+            text_color = 'lightblue'
+        x, y = traj[TrajParamIndex.X], traj[TrajParamIndex.Y]
         ax.text(y, x, f"{i}", color=text_color, fontweight='bold', ha='center', va='center')
+        
+        # Plot coarse trajs if current traj matched to GT
+        if i in matched_pred_indices:
+            coarse_traj = coarse_trajs[i]
+            poly = create_polygon_from_traj(coarse_traj, coarse_color, coarse_color, 0.5, 1)
+            ax.add_patch(poly)
+            
+            # connect the coarse traj to the refined traj
+            coarse_x, coarse_y = coarse_traj[TrajParamIndex.X], coarse_traj[TrajParamIndex.Y]
+            ax.plot([coarse_y, y], [coarse_x, x], 'c--', alpha=0.5)
     
     # Add grid
     ax.grid(True, linestyle='--', alpha=0.6)
     
     # Set title and labels
-    ax.set_title(f"BEV Trajectory Visualization\nMatched pairs: {len(gt_idx)}/{len(gt_trajs)} GT, {len(pred_idx)}/{len(pred_trajs)} Pred")
+    ax.set_title(f"BEV Trajectory Visualization\nMatched pairs: {len(gt_idx)}/{len(gt_trajs)} GT, {len(pred_idx)}/{len(refined_trajs)} Pred")
     ax.set_xlabel("Y (meters)")
     ax.set_ylabel("X (meters)")
     
     legend_boxes = [
         Rectangle((0, 0), 1, 1, edgecolor=gt_color, facecolor=gt_color, label='Ground Truth'),
-        Rectangle((0, 0), 1, 1, edgecolor=pred_color, facecolor=pred_color, label='Matched Prediction'),
-        Rectangle((0, 0), 1, 1, edgecolor=unmatched_pred_color, facecolor=unmatched_pred_color, label='Unmatched Prediction'),
+        Rectangle((0, 0), 1, 1, edgecolor=coarse_color, facecolor=coarse_color, label='Matched Coarse Traj'),
+        Rectangle((0, 0), 1, 1, edgecolor=refined_color, facecolor=refined_color, label='Matched Refined Traj'),
+        Rectangle((0, 0), 1, 1, edgecolor=unmatched_refined_color, facecolor=unmatched_refined_color, label='Unmatched Refined Traj'),
+        Rectangle((0, 0), 1, 1, edgecolor=fp_traj_color, facecolor=fp_traj_color, label='FP Traj(prob>0.5)'),
     ]
     
-    # 添加 legend 到 ax
     ax.legend(handles=legend_boxes, loc='upper right')
     
     # Save the figure
@@ -242,7 +264,7 @@ def visualize_matched_trajs_on_bev(gt_trajs, pred_trajs, gt_idx, pred_idx, save_
     print(f"BEV visualization saved to: {os.path.abspath(save_path)}")
     
 
-def visualize_refined_trajs_on_bev(coarse_trajs, refined_trajs, save_path, bev_range=[-100,100,-12,12]):
+def visualize_refined_trajs_on_bev(coarse_trajs, refined_trajs, save_path, bev_range=[-100,100,-12,12], infomation=None):
     """
     Visualize the coarse and refined trajs on BEV
     
@@ -260,6 +282,19 @@ def visualize_refined_trajs_on_bev(coarse_trajs, refined_trajs, save_path, bev_r
 
     # Create figure and axis
     fig, ax = plt.subplots(figsize=(10, 40))
+    
+    # Add info
+    if infomation is not None:
+        ax.text(
+            0.01, 0.99,  # x=0.01, y=0.99 表示轴范围的左上角
+            infomation,
+            transform=ax.transAxes,  # 保证是相对于坐标轴大小，而不是数据坐标
+            fontsize=16,           # 字体大小（比默认大）
+            fontweight='bold',     # 加粗
+            color='red',
+            verticalalignment='top',
+            horizontalalignment='left'
+        )
     
     # Set the BEV range limits
     x_min, x_max = bev_range[0], bev_range[1]
