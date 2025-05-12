@@ -18,6 +18,8 @@ import json
 import os
 import glob
 import shutil
+import xinnovation.src.core.training_state as TS
+from xinnovation.src.utils.visualize_utils import visualize_query_heatmap
 
 __all__ = ["Sparse4DModule"]
 
@@ -39,6 +41,11 @@ class Sparse4DModule(LightningDetector):
         # for visualization
         if self.debug_config.visualize_validation_results:
             self.register_buffer("bbox_edge_points", sample_bbox_edge_points(20))
+            
+        # save intermediate results
+        TS.intermediate_result_save_dir = f"{self.debug_config.visualize_validation_results_dir}/intermediate_results"
+        os.makedirs(TS.intermediate_result_save_dir, exist_ok=True)
+        TS.save_intermediate_results = self.debug_config.save_intermediate_results
         
     def forward(self, batch) -> List[Dict]:
         return self.detector(batch)
@@ -256,6 +263,14 @@ class Sparse4DModule(LightningDetector):
         generate_video_from_dir(imgs_dir1, os.path.join(self.debug_config.visualize_validation_results_dir, "matched_trajs_on_bev.mp4"), 10)
         generate_video_from_dir(imgs_dir2, os.path.join(self.debug_config.visualize_validation_results_dir, "refined_trajs_on_bev.mp4"), 10)
         print("Finished generating BEV matching results video")
+        
+    def _visualize_query_heatmap(self):
+        """Visualize the query heatmap."""
+        if not self.debug_config.visualize_validation_results:
+            return
+        print("Generating the query heatmap...")
+        query_heatmap_dir = os.path.join(TS.intermediate_result_save_dir, "query_heatmap")
+        generate_video_from_dir(query_heatmap_dir, os.path.join(self.debug_config.visualize_validation_results_dir, "query_heatmap.mp4"), 10)
 
     def _generate_validation_trajs_video(self):
         """Generate the video of the predicted trajectories."""
@@ -421,6 +436,7 @@ class Sparse4DModule(LightningDetector):
             # self._generate_matched_trajs_video()
             self._visualize_matching_results()
             self._visualize_trajs_on_bev()
+            self._visualize_query_heatmap()
         
     def on_validation_end(self):
         """On validation end, visualize the matching history."""
@@ -539,8 +555,14 @@ class Sparse4DModule(LightningDetector):
             img_name = f'epoch_{epoch_str}_{camera_id.name}.png'
             img = cv2.cvtColor(concat_imgs[camera_id], cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join(save_dir, img_name), img)
+    
+    def update_global_training_state(self, epoch, step, on_val=False):
+        TS.current_epoch = epoch
+        TS.global_step = step
+        TS.on_val = on_val
         
     def training_step(self, batch: Dict, batch_idx: int) -> Dict:
+        self.update_global_training_state(self.current_epoch, self.global_step, False)
         """Training step."""
         # Forward pass
         outputs, _, c_outputs, _ = self(batch)
@@ -559,6 +581,7 @@ class Sparse4DModule(LightningDetector):
         return loss_dict
     
     def validation_step(self, batch: Dict, batch_idx: int) -> Dict:
+        self.update_global_training_state(self.current_epoch, self.global_step, True)
         """Validation step."""
         # Forward pass
         outputs, _, c_outputs, _ = self(batch)

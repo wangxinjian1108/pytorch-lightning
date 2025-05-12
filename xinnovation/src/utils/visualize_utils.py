@@ -533,10 +533,10 @@ def save_matrix_heatmap(matrix, filename="matrix_heatmap.png", title="Matrix Hea
     print(f"Heatmap saved to {os.path.abspath(filename)}")
     
 
-def visualize_query_heatmap(query, save_path=None, title=None, figsize=(10, 8), 
+def visualize_query_heatmap(query, save_path=None, title=None, figsize=None, 
                            cmap='viridis', vmin=None, vmax=None, 
                            xlabel='Embedding Dimension', ylabel='Query Number',
-                           show_colorbar=True, dpi=100, show=True):
+                           show_colorbar=True, dpi=100, show=False):
     """
     Visualize a query tensor as a heatmap and save to a specified path.
     
@@ -581,6 +581,8 @@ def visualize_query_heatmap(query, save_path=None, title=None, figsize=(10, 8),
     query_np = np.squeeze(query_np)
     
     # Create figure and axis
+    if figsize is None:
+        figsize = (query_np.shape[1] // 8, query_np.shape[0] // 8)
     fig, ax = plt.subplots(figsize=figsize)
     
     # Create the heatmap

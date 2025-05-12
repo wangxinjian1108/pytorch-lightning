@@ -6,6 +6,8 @@ from xinnovation.src.components.lightning_module.detectors import FPNImageFeatur
 from .mts_feature_aggregator import MultiviewTemporalSpatialFeatureAggregator
 from .sparse4d_plugins import AnchorEncoder, TrajectoryRefiner
 from xinnovation.src.utils.debug_utils import check_nan_or_inf
+import xinnovation.src.core.training_state as TS
+from xinnovation.src.utils.visualize_utils import visualize_query_heatmap
 
 __all__ = ["Sparse4DDetector"]
 

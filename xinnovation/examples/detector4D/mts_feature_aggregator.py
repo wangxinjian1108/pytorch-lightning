@@ -7,6 +7,9 @@ from xinnovation.src.core.registry import ATTENTION
 from xinnovation.src.utils import generate_bbox_corners_points, project_points_to_image
 from xinnovation.src.utils.feature_sampling import grid_sample_fpn_features_parallel_apply, grid_sample_fpn_features
 from xinnovation.src.utils.debug_utils import check_nan_or_inf
+import xinnovation.src.core.training_state as TS
+from xinnovation.src.utils.visualize_utils import visualize_query_heatmap
+import os
 
 __all__ = ["MultiviewTemporalSpatialFeatureAggregator"]
 
@@ -67,6 +70,9 @@ class MultiviewTemporalSpatialFeatureAggregator(nn.Module):
         self.feature_dropout = nn.Dropout(p=feature_dropout_prob)
         
         self.init_weights()
+        
+        # debug results
+        os.makedirs(f'{TS.intermediate_result_save_dir}/query_heatmap', exist_ok=True)
                 
     def init_weights(self):
         for p in self.parameters():
@@ -224,6 +230,11 @@ class MultiviewTemporalSpatialFeatureAggregator(nn.Module):
         weighted_features = weighted_features / weights_sum # [B, query_dim, N]
         check_nan_or_inf(weighted_features, active=check_abnormal, name="normalized_weighted_features")
         new_content_queries = weighted_features.permute(0, 2, 1) # [B, N, query_dim]
+        
+        if TS.save_intermediate_results and TS.on_val:
+            epoch_str = str(TS.current_epoch).zfill(3)
+            save_path = f'{TS.intermediate_result_save_dir}/query_heatmap/query_heatmap_{epoch_str}.png'
+            visualize_query_heatmap(new_content_queries, save_path, f'Epoch {TS.current_epoch}, Query Heatmap')
 
         if self.residual_mode == "cat":
             new_content_queries = torch.cat([content_queries, new_content_queries], dim=-1)
