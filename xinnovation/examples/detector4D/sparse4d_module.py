@@ -20,6 +20,7 @@ import glob
 import shutil
 import xinnovation.src.core.training_state as TS
 from xinnovation.src.utils.visualize_utils import visualize_query_heatmap
+from xinnovation.src.utils.math_utils import generate_bbox2D_from_pixel_cloud
 
 __all__ = ["Sparse4DModule"]
 
@@ -92,6 +93,8 @@ class Sparse4DModule(LightningDetector):
 
         traj_fp_mask = traj_fp_mask.unsqueeze(1).unsqueeze(3).unsqueeze(4).expand(-1, T, -1, C, P)
         pixels[traj_fp_mask, :] = -1
+        
+        center_bboxs = generate_bbox2D_from_pixel_cloud(pixels, True) # (B, T, N, C, 5)
 
         concat_imgs: Dict[SourceCameraId, np.ndarray] = {}
         
@@ -131,12 +134,44 @@ class Sparse4DModule(LightningDetector):
                     mask[batch_indices, time_indices, h_indices, w_indices, :] = 0
             img_sequence = img_sequence * mask + color * (1 - mask)
             imgs_dict[camera_id] = img_sequence
-            
+
             # save concat imgs
-            cimg = img_sequence.permute(0, 2, 1, 3, 4) # [B, H, T, W, 3]
+            cimg = img_sequence.permute(0, 2, 1, 3, 4).contiguous() # [B, H, T, W, 3]
             cimg = cimg.reshape(B * H, T * W, 3) # [B * H, T * W, 3]
             cimg = cimg.cpu().numpy() # [B * H, T * W, 3]
+            cimg = cimg.astype(np.uint8)
+            
+            # BBox 2D and its center
+            tmp_bbox = center_bboxs[..., cam_idx, :] # [B, T, N, 5]
+            tmp_bbox = tmp_bbox.reshape(B, T, N, 5) # [B, T, N, 5]
+            # Visualize the text info on image, such as the trajectory id
+            if matched_indices is not None:
+                for ib, match in enumerate(matched_indices):
+                    traj_inds = match[1]
+                    matched_bboxs = tmp_bbox[ib, :, traj_inds]  # [T, K, 5]
+                    for it in range(T):
+                        for ik in range(len(traj_inds)):
+                            bbox = matched_bboxs[it][ik]
+                            # draw bbox
+                            cx, cy, w, h, valid = bbox
+                            if not valid:
+                                continue
+                            cx, cy, w, h = cx.item(), cy.item(), w.item(), h.item()
+                            cx *= W
+                            cy *= H
+                            w *= W
+                            h *= H
+                            x1, y1, x2, y2 = cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
+                            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                            # draw bbox
+                            if self.debug_config.render_bbox2d:
+                                cv2.rectangle(cimg[ib * H: (ib + 1) * H, it * W: (it + 1) * W], (x1, y1), (x2, y2), color.cpu().numpy().tolist(), 1)
+                            # draw traj id
+                            traj_id = traj_inds[ik]
+                            text = f"{traj_id}"
+                            cv2.putText(cimg[ib * H: (ib + 1) * H, it * W: (it + 1) * W], text, (int(cx), int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color.cpu().numpy().tolist(), 1)
             if T > 1:
+                # we plot the timestamp info when T > 1, sequential model is activated
                 for ib in range(B):
                     for it in range(T):
                         # debug_message = f"{camera_id.name}: {ego_states[ib, it, EgoStateIndex.STEADY_TIMESTAMP]:.2f}"
@@ -433,7 +468,7 @@ class Sparse4DModule(LightningDetector):
         """On train end, visualize the matching history."""
         if self.global_rank == 0:
             # self._generate_validation_trajs_video()
-            # self._generate_matched_trajs_video()
+            self._generate_matched_trajs_video()
             self._visualize_matching_results()
             self._visualize_trajs_on_bev()
             self._visualize_query_heatmap()
@@ -465,7 +500,7 @@ class Sparse4DModule(LightningDetector):
             img = cv2.cvtColor(concat_imgs[camera_id], cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join(save_dir, img_name), img)
 
-    def save_validation_intermediate_results(self, batch: Dict, batch_idx: int, trajs_list: List[torch.Tensor]):
+    def save_validation_intermediate_results(self, batch: Dict, batch_idx: int, trajs_list: List[torch.Tensor], use_pre_traj: bool = True):
         """
         Save intermediate results for visualization, only save the first batch for training and validation.
         Args:
@@ -506,9 +541,9 @@ class Sparse4DModule(LightningDetector):
             for layer_idx in range(num_decoder_layers):
                 imgs_copy = imgs_dict.copy()
                 matched_indices = self.criterion.get_latest_matching_indices(layer_idx)
-                if matched_indices is None:
+                if matched_indices is None or layer_idx == 0:
                     continue
-                trajs = trajs_list[layer_idx]
+                trajs = trajs_list[layer_idx - 1] if use_pre_traj else trajs_list[layer_idx]
                 concat_imgs = self._render_trajs_on_imgs(trajs, 
                                                     trajs[..., TrajParamIndex.HAS_OBJECT].sigmoid(),
                                                     batch['camera_ids'],
@@ -534,7 +569,7 @@ class Sparse4DModule(LightningDetector):
                     
                     concat_imgs[camera_id] = img
 
-        
+
         # 4. visualize pred trajs of last layer
         if self.debug_config.render_pred_trajs:
             trajs = trajs_list[-1]
@@ -593,7 +628,7 @@ class Sparse4DModule(LightningDetector):
         # Compute loss
         loss_dict = self.criterion(batch['trajs'], outputs, c_outputs, batch_idx, "val") # don't save matching history for validation
 
-        self.save_validation_intermediate_results(batch, batch_idx, outputs)
+        self.save_validation_intermediate_results(batch, batch_idx, outputs, self.criterion.use_coarse_trajs_to_match)
         
         # Store outputs for epoch end
         self.val_step_outputs.append({

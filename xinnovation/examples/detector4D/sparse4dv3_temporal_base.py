@@ -319,6 +319,7 @@ lightning_module = dict(
         point_radius=1,
         log_dir=f"{save_dir}/logs/{exp_name}",
         predict_dir=f"{work_dir}/xinnovation_predict_results",
+        render_bbox2d=False
     ),
 )
 

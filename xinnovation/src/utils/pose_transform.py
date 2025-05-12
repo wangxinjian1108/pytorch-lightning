@@ -325,7 +325,8 @@ def project_points_to_image(trajs: torch.Tensor,
     # so we need to cast the cam_points to float32
     
     # pixels: torch.Tensor[B*T, N, C, P, 2]
-    return camera_to_pixel(cam_points, calibrations, normalize)
+    pixels = camera_to_pixel(cam_points, calibrations, normalize)
+    return pixels
 
 if __name__ == "__main__":
     B, N, T, C, P = 32, 128, 10, 7, 128
