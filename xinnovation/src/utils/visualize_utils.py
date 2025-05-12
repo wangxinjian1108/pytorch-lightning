@@ -29,6 +29,7 @@ __all__ = [
     'visualize_matched_trajs_on_bev',
     'visualize_refined_trajs_on_bev',
     'visualize_matrix_interactive',
+    'visualize_query_heatmap',
     'save_matrix_heatmap'
 ]
 
@@ -530,6 +531,103 @@ def save_matrix_heatmap(matrix, filename="matrix_heatmap.png", title="Matrix Hea
     plt.savefig(filename, dpi=dpi)
     plt.close()
     print(f"Heatmap saved to {os.path.abspath(filename)}")
+    
+
+def visualize_query_heatmap(query, save_path=None, title=None, figsize=(10, 8), 
+                           cmap='viridis', vmin=None, vmax=None, 
+                           xlabel='Embedding Dimension', ylabel='Query Number',
+                           show_colorbar=True, dpi=100, show=True):
+    """
+    Visualize a query tensor as a heatmap and save to a specified path.
+    
+    Parameters:
+    -----------
+    query : torch.Tensor or numpy.ndarray
+        The query tensor of shape (N, D) where:
+        - N is the number of queries
+        - D is the dimension of each query
+    save_path : str, optional
+        Path where the heatmap will be saved. If None, the figure won't be saved.
+    title : str, optional
+        Title of the heatmap. If None, a default title will be used.
+    figsize : tuple, optional
+        Figure size as (width, height) in inches.
+    cmap : str, optional
+        Colormap to use for the heatmap.
+    vmin, vmax : float, optional
+        Value range for the colormap. If None, the min and max values will be used.
+    xlabel : str, optional
+        Label for the x-axis.
+    ylabel : str, optional
+        Label for the y-axis.
+    show_colorbar : bool, optional
+        Whether to show a colorbar.
+    dpi : int, optional
+        Resolution of the saved figure in dots per inch.
+    show : bool, optional
+        Whether to display the plot.
+    
+    Returns:
+    --------
+    fig, ax : tuple
+        The figure and axis objects for further customization if needed.
+    """
+    # Convert to numpy if it's a torch tensor
+    if isinstance(query, torch.Tensor):
+        query_np = query.detach().cpu().numpy()
+    else:
+        query_np = np.asarray(query)
+    
+    query_np = np.squeeze(query_np)
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Create the heatmap
+    im = ax.imshow(query_np, aspect='auto', cmap=cmap, vmin=vmin, vmax=vmax)
+    
+    # Set title
+    if title is None:
+        title = f'Query Heatmap (Shape: {query_np.shape[0]} × {query_np.shape[1]})'
+    ax.set_title(title)
+    
+    # Set labels
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    
+    # Add colorbar if requested
+    if show_colorbar:
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('Value')
+    
+    # Set ticks
+    if query_np.shape[1] <= 20:
+        ax.set_xticks(np.arange(query_np.shape[1]))
+    else:
+        ax.set_xticks(np.arange(0, query_np.shape[1], max(1, query_np.shape[1] // 10)))
+    
+    if query_np.shape[0] <= 20:
+        ax.set_yticks(np.arange(query_np.shape[0]))
+    else:
+        ax.set_yticks(np.arange(0, query_np.shape[0], max(1, query_np.shape[0] // 10)))
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save if a path is provided
+    if save_path is not None:
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
+        plt.savefig(save_path, dpi=dpi, bbox_inches='tight')
+        print(f"Heatmap saved to {save_path}")
+    
+    # Show plot if requested
+    if show:
+        plt.show()
+    else:
+        plt.close()
+    
+    return fig, ax
 
 
 # Example usage (will run if script is executed directly)
