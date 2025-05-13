@@ -20,7 +20,7 @@ import glob
 import shutil
 import xinnovation.src.core.training_state as TS
 from xinnovation.src.utils.visualize_utils import visualize_query_heatmap
-from xinnovation.src.utils.math_utils import generate_bbox2D_from_pixel_cloud
+from xinnovation.src.utils.math_utils import generate_bbox2D_from_pixel_cloud, combine_multiple_images
 
 __all__ = ["Sparse4DModule"]
 
@@ -357,6 +357,8 @@ class Sparse4DModule(LightningDetector):
             return
         print("Generating the video of the matched trajectories...")
         trajs_dir = os.path.join(self.debug_config.visualize_validation_results_dir, "matched_trajs")
+        video_save_dir = os.path.join(self.debug_config.visualize_validation_results_dir, "matched_trajs_detail_video")
+        os.makedirs(video_save_dir, exist_ok=True)
         if not os.path.exists(trajs_dir):
             print("No matched trajectories to visualize")
             return
@@ -419,7 +421,7 @@ class Sparse4DModule(LightningDetector):
                 
                 # Generate video using ffmpeg
                 video_name = f"matched_trajs_{camera_name}_layer_{layer_idx}.mp4"
-                video_path = os.path.join(self.debug_config.visualize_validation_results_dir, video_name)
+                video_path = os.path.join(video_save_dir, video_name)
                 
                 ffmpeg_cmd = f"ffmpeg -y -framerate 10 -i {temp_dir}/frame_%04d.png -c:v libx264 -pix_fmt yuv420p {video_path}"
                 os.system(ffmpeg_cmd)
@@ -450,7 +452,7 @@ class Sparse4DModule(LightningDetector):
                 
                 # Generate video using ffmpeg
                 video_name = f"matched_trajs_{camera_name}_combined.mp4"
-                video_path = os.path.join(self.debug_config.visualize_validation_results_dir, video_name)
+                video_path = os.path.join(video_save_dir, video_name)
                 
                 ffmpeg_cmd = f"ffmpeg -y -framerate 10 -i {temp_dir}/frame_%04d.png -c:v libx264 -pix_fmt yuv420p {video_path}"
                 os.system(ffmpeg_cmd)
@@ -461,7 +463,36 @@ class Sparse4DModule(LightningDetector):
                 if os.path.exists(temp_dir):
                     shutil.rmtree(temp_dir)
         
-        shutil.rmtree(trajs_dir)
+        # 3. Generate combined videos (combine all image to one image)
+        print("\nGenerating combined-camera videos...")
+            
+        # Create temporary directory for frames
+        temp_dir = os.path.join(trajs_dir, f"temp_all_cameras_combined")
+        os.makedirs(temp_dir, exist_ok=True)
+        try:
+            camera_ids = [cam.name for cam in self.debug_config.visualize_camera_list]
+            file_nb = len(camera_files['FRONT_LEFT_CAMERA'])
+            for i in range(file_nb):
+                tmp_img_list = []
+                for camera in camera_ids:
+                    tmp_img_list.append(cv2.imread(camera_files[camera][i]))
+                combined_img = combine_multiple_images(tmp_img_list)
+                frame_path = os.path.join(temp_dir, f"frame_{i:04d}.png")
+                cv2.imwrite(frame_path, combined_img)
+                
+            video_name = f"matched_trajs_all_cameras_combined.mp4"
+            video_path = os.path.join(self.debug_config.visualize_validation_results_dir, video_name)
+            
+            ffmpeg_cmd = f"ffmpeg -y -framerate 10 -i {temp_dir}/frame_%04d.png -c:v libx264 -pix_fmt yuv420p {video_path}"
+            os.system(ffmpeg_cmd)
+            print(f"Generated combined video: {video_path}")
+            
+        finally:
+            # Clean up temporary directory
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+                
+        # shutil.rmtree(trajs_dir)
         print("Matched trajectories video generation completed")
 
     def on_train_end(self):
@@ -500,7 +531,7 @@ class Sparse4DModule(LightningDetector):
             img = cv2.cvtColor(concat_imgs[camera_id], cv2.COLOR_RGB2BGR)
             cv2.imwrite(os.path.join(save_dir, img_name), img)
 
-    def save_validation_intermediate_results(self, batch: Dict, batch_idx: int, trajs_list: List[torch.Tensor], use_pre_traj: bool = True):
+    def save_validation_intermediate_results(self, batch: Dict, batch_idx: int, trajs_list: List[torch.Tensor]):
         """
         Save intermediate results for visualization, only save the first batch for training and validation.
         Args:
@@ -543,7 +574,7 @@ class Sparse4DModule(LightningDetector):
                 matched_indices = self.criterion.get_latest_matching_indices(layer_idx)
                 if matched_indices is None or layer_idx == 0:
                     continue
-                trajs = trajs_list[layer_idx - 1] if use_pre_traj else trajs_list[layer_idx]
+                trajs = trajs_list[layer_idx - 1] if self.criterion.use_coarse_trajs_to_match else trajs_list[layer_idx]
                 concat_imgs = self._render_trajs_on_imgs(trajs, 
                                                     trajs[..., TrajParamIndex.HAS_OBJECT].sigmoid(),
                                                     batch['camera_ids'],
@@ -628,7 +659,7 @@ class Sparse4DModule(LightningDetector):
         # Compute loss
         loss_dict = self.criterion(batch['trajs'], outputs, c_outputs, batch_idx, "val") # don't save matching history for validation
 
-        self.save_validation_intermediate_results(batch, batch_idx, outputs, self.criterion.use_coarse_trajs_to_match)
+        self.save_validation_intermediate_results(batch, batch_idx, outputs)
         
         # Store outputs for epoch end
         self.val_step_outputs.append({

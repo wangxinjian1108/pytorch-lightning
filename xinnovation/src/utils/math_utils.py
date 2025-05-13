@@ -1,6 +1,7 @@
 import torch
 import math
 import numpy as np
+import cv2
 from xinnovation.src.core import TrajParamIndex
 
 def quaternion2RotationMatix(qw, qx, qy, qz) -> torch.Tensor:
@@ -273,3 +274,28 @@ def generate_bbox2D_from_pixel_cloud(pixel_clouds, center_format: bool = False, 
         bbox_2d = torch.stack([min_x, min_y, max_x, max_y, valid_mask], dim=-1)
     
     return bbox_2d
+
+
+def combine_multiple_images(img_list, output_shape=None):
+    """Combine multiple images into one.
+    
+    Args:
+        img_list: List of images, each image is a numpy array
+        output_shape: Shape of the output image, (height, width)
+        
+    Returns:
+        Combined image
+    """
+    if output_shape is None:
+        # take the min shape of img_list
+        output_shape = np.min([img.shape[:2] for img in img_list], axis=0) #(H, W)
+    img_list = [cv2.resize(img, (output_shape[1], output_shape[0])) for img in img_list]
+    row_nb = int(np.ceil(np.sqrt(len(img_list))))
+    col_nb = (len(img_list) + row_nb - 1) // row_nb
+    combined_img = np.zeros((row_nb * output_shape[0], col_nb * output_shape[1], 3), dtype=np.uint8)
+    for i, img in enumerate(img_list):
+        row_idx = i // col_nb
+        col_idx = i % col_nb
+        combined_img[row_idx * output_shape[0]:(row_idx + 1) * output_shape[0],
+                     col_idx * output_shape[1]:(col_idx + 1) * output_shape[1]] = img
+    return combined_img
