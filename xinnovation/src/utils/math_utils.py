@@ -150,46 +150,6 @@ def inverse_sigmoid(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     return torch.log(x_safe / (1 - x_safe))
 
 
-def generate_bbox2D_from_pixel_cloud2(pixel_clouds, center_format: bool = True, drop_neg_elements: bool = True) -> torch.Tensor:
-    """Generate 2D bounding box from pixel cloud.
-    
-    Args:
-        pixel_clouds: Tensor of shape [..., P, 2]
-        center_format: Whether to return bounding box in center format (x_center, y_center, width, height).
-        drop_neg_elements: If True, neg elements are invalid pixels
-        
-    Returns:
-        Tensor of shape [..., 5] containing 2D bounding box, last element means its valid or not
-    """
-    
-    # firstly we take the max elements
-    max_x = pixel_clouds[..., 0, :].max(dim=-1)[0]
-    max_y = pixel_clouds[..., 1, :].max(dim=-1)[0]
-    
-    valid_mask = torch.ones_like(max_x)
-    
-    if drop_neg_elements:
-        # Get a mask for valid (non-negative) elements
-        valid_mask = (pixel_clouds[..., :, 0] >= 0) & (pixel_clouds[..., :, 1] >= 0)
-        
-    else:
-        # If no filtering is required, proceed with all pixels
-        min_x = pixel_clouds[..., 0, :].min(dim=-1)[0]
-        min_y = pixel_clouds[..., 1, :].min(dim=-1)[0]
-
-    # Create the bounding box
-    if center_format:
-        center_x = (min_x + max_x) / 2
-        center_y = (min_y + max_y) / 2
-        width = max_x - min_x
-        height = max_y - min_y
-        bbox_2d = torch.stack([center_x, center_y, width, height, valid_mask], dim=-1)
-    else:
-        bbox_2d = torch.stack([min_x, min_y, max_x, max_y, valid_mask], dim=-1)
-    
-    return bbox_2d
-
-
 def conditional_amin(x, invalid_mask):
     """Compute amin based on mask, if all elements are masked, return 0, keeping the dimensions."""
     # Mask invalid elements with inf so they won't contribute to the min
@@ -235,7 +195,6 @@ def generate_bbox2D_from_pixel_cloud(pixel_clouds, center_format: bool = False, 
     Returns:
         Tensor of shape [..., 4] containing 2D bounding box.
     """
-    valid_mask = torch.ones_like(pixel_clouds[..., 0, 0])
     if drop_neg_elements:
         # Clone to avoid modifying the original tensor
         x_coords = pixel_clouds[..., 0].clone()  # shape [..., P]
@@ -249,7 +208,6 @@ def generate_bbox2D_from_pixel_cloud(pixel_clouds, center_format: bool = False, 
         min_y = conditional_amin(y_coords, invalid_mask)
         max_y = conditional_amax(y_coords, invalid_mask)
         
-        valid_mask = ~invalid_mask.any(dim=-1)
     else:
         # Compute min and max directly
         x_coords = pixel_clouds[..., :, 0]  # shape [..., P]
@@ -269,8 +227,11 @@ def generate_bbox2D_from_pixel_cloud(pixel_clouds, center_format: bool = False, 
         center_y = (min_y + max_y) / 2
         width = max_x - min_x
         height = max_y - min_y
+        
+        valid_mask = (width > 0) & (height > 0)
         bbox_2d = torch.stack([center_x, center_y, width, height, valid_mask], dim=-1)
     else:
+        valid_mask = torch.ones_like(pixel_clouds[..., 0, 0])
         bbox_2d = torch.stack([min_x, min_y, max_x, max_y, valid_mask], dim=-1)
     
     return bbox_2d

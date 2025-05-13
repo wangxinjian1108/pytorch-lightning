@@ -59,7 +59,9 @@ class Sparse4DModule(LightningDetector):
                       ego_states: torch.Tensor, 
                       imgs_dict: Dict[SourceCameraId, torch.Tensor], 
                       color: torch.Tensor,
-                      matched_indices: List[Tuple[np.ndarray, np.ndarray]]=None) -> Tuple[Dict[SourceCameraId, torch.Tensor], Dict[SourceCameraId, np.ndarray]]:
+                      matched_indices: List[Tuple[np.ndarray, np.ndarray]]=None,
+                      refined_trajs: torch.Tensor=None,
+                      refined_color: torch.Tensor=None) -> Tuple[Dict[SourceCameraId, torch.Tensor], Dict[SourceCameraId, np.ndarray]]:
         """
         Render trajectories on images.
         Args:
@@ -69,6 +71,9 @@ class Sparse4DModule(LightningDetector):
             calibrations: torch.Tensor[B, C, CameraParamIndex.END_OF_INDEX]
             ego_states: torch.Tensor[B, T, EgoStateParamIndex.END_OF_INDEX]
             imgs_dict: Dict[SourceCameraId, torch.Tensor[B, T, 3, H, W]]
+            color: torch.Tensor[3]
+            matched_indices: List[Tuple[np.ndarray, np.ndarray]]
+            refined_trajs: torch.Tensor[B, N, TrajParamIndex.END_OF_INDEX] after refinement
         Returns:
             imgs_dict: Dict[SourceCameraId, torch.Tensor[B, T, 3, H, W]]
             concat_imgs: Dict[SourceCameraId, np.ndarray]
@@ -78,6 +83,10 @@ class Sparse4DModule(LightningDetector):
         pixels = project_points_to_image(trajs, calibrations, ego_states, self.bbox_edge_points, use_log_dimension=self.detector.use_log_dimension) # pixels: torch.Tensor[B*T, N, C, P, 2]
         _, N, C, P, _ = pixels.shape
         pixels = pixels.view(B, T, N, C, P, 2)
+        
+        if refined_trajs is not None:
+            refined_pixels = project_points_to_image(refined_trajs, calibrations, ego_states, self.bbox_edge_points, use_log_dimension=self.detector.use_log_dimension) # pixels: torch.Tensor[B*T, N, C, P, 2]
+            refined_pixels = refined_pixels.view(B, T, N, C, P, 2)
         
         # disable pixels of false positive trajectories
         traj_fp_mask = trajs_prob < self.debug_config.pred_traj_threshold # [B, N]
@@ -95,7 +104,12 @@ class Sparse4DModule(LightningDetector):
         pixels[traj_fp_mask, :] = -1
         
         center_bboxs = generate_bbox2D_from_pixel_cloud(pixels, True) # (B, T, N, C, 5)
-
+        
+        if refined_trajs is not None:
+            refined_center_bboxs = generate_bbox2D_from_pixel_cloud(refined_pixels, True) # (B, T, N, C, 5)
+        
+        
+        # begin to plot
         concat_imgs: Dict[SourceCameraId, np.ndarray] = {}
         
         # plot pixels on images
@@ -121,8 +135,8 @@ class Sparse4DModule(LightningDetector):
             mask = torch.ones_like(img_sequence).to(self.device) # [B, T, H, W, 3]
             
             # 利用PyTorch的高级索引功能，通过向量化操作快速修改像素
-            batch_indices = torch.arange(B, device=self.device)[:, None, None].expand(-1, T, N*P)
-            time_indices = torch.arange(T, device=self.device)[None, :, None].expand(B, -1, N*P)
+            batch_indices = torch.arange(B, device=self.device)[:, None, None].expand(-1, T, N * P)
+            time_indices = torch.arange(T, device=self.device)[None, :, None].expand(B, -1, N * P)
             r = (self.debug_config.point_radius + 1) // 2
             r = max(r, 1)
             for i in range(-r, r):
@@ -144,6 +158,31 @@ class Sparse4DModule(LightningDetector):
             # BBox 2D and its center
             tmp_bbox = center_bboxs[..., cam_idx, :] # [B, T, N, 5]
             tmp_bbox = tmp_bbox.reshape(B, T, N, 5) # [B, T, N, 5]
+            
+            if refined_trajs is not None:
+                refined_tmp_bbox = refined_center_bboxs[..., cam_idx, :] # [B, T, N, 5]
+                refined_tmp_bbox = refined_tmp_bbox.reshape(B, T, N, 5) # [B, T, N, 5]
+                
+                
+            def draw_info_on_img(bbox_, color_, cimg_, H_, W_, id_, plot_bbox_):
+                cx, cy, w, h, valid = bbox_
+                if not valid:
+                    return
+                cx, cy, w, h = cx.item(), cy.item(), w.item(), h.item()
+                cx *= W_
+                cy *= H_
+                w *= W_
+                h *= H_
+                x1, y1, x2, y2 = cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
+                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                # draw bbox
+                if plot_bbox_:
+                    cv2.rectangle(cimg_, (x1, y1), (x2, y2), color_.cpu().numpy().tolist(), 1)
+                # draw traj id
+                text = f"{id_}"
+                cv2.putText(cimg_, text, (int(cx), int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color_.cpu().numpy().tolist(), 1)
+                
+                
             # Visualize the text info on image, such as the trajectory id
             if matched_indices is not None:
                 for ib, match in enumerate(matched_indices):
@@ -152,24 +191,12 @@ class Sparse4DModule(LightningDetector):
                     for it in range(T):
                         for ik in range(len(traj_inds)):
                             bbox = matched_bboxs[it][ik]
-                            # draw bbox
-                            cx, cy, w, h, valid = bbox
-                            if not valid:
-                                continue
-                            cx, cy, w, h = cx.item(), cy.item(), w.item(), h.item()
-                            cx *= W
-                            cy *= H
-                            w *= W
-                            h *= H
-                            x1, y1, x2, y2 = cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
-                            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                            # draw bbox
-                            if self.debug_config.render_bbox2d:
-                                cv2.rectangle(cimg[ib * H: (ib + 1) * H, it * W: (it + 1) * W], (x1, y1), (x2, y2), color.cpu().numpy().tolist(), 1)
-                            # draw traj id
-                            traj_id = traj_inds[ik]
-                            text = f"{traj_id}"
-                            cv2.putText(cimg[ib * H: (ib + 1) * H, it * W: (it + 1) * W], text, (int(cx), int(cy)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color.cpu().numpy().tolist(), 1)
+                            # draw coarse matched bbox info
+                            draw_info_on_img(bbox, color, cimg, H, W, traj_inds[ik], False)
+                            if refined_trajs is not None:
+                                # draw refined matched bbox info
+                                refined_bbox = refined_tmp_bbox[ib, it, traj_inds[ik]]
+                                draw_info_on_img(refined_bbox, refined_color, cimg, H, W, traj_inds[ik], True)
             if T > 1:
                 # we plot the timestamp info when T > 1, sequential model is activated
                 for ib in range(B):
@@ -465,10 +492,11 @@ class Sparse4DModule(LightningDetector):
         
         # 3. Generate combined videos (combine all image to one image)
         print("\nGenerating combined-camera videos...")
-            
+        
         # Create temporary directory for frames
         temp_dir = os.path.join(trajs_dir, f"temp_all_cameras_combined")
         os.makedirs(temp_dir, exist_ok=True)
+        
         try:
             camera_ids = [cam.name for cam in self.debug_config.visualize_camera_list]
             file_nb = len(camera_files['FRONT_LEFT_CAMERA'])
@@ -574,15 +602,17 @@ class Sparse4DModule(LightningDetector):
                 matched_indices = self.criterion.get_latest_matching_indices(layer_idx)
                 if matched_indices is None or layer_idx == 0:
                     continue
-                trajs = trajs_list[layer_idx - 1] if self.criterion.use_coarse_trajs_to_match else trajs_list[layer_idx]
-                concat_imgs = self._render_trajs_on_imgs(trajs, 
-                                                    trajs[..., TrajParamIndex.HAS_OBJECT].sigmoid(),
+                coarse_trajs, refined_trajs = trajs_list[layer_idx - 1], trajs_list[layer_idx]
+                concat_imgs = self._render_trajs_on_imgs(coarse_trajs, 
+                                                    coarse_trajs[..., TrajParamIndex.HAS_OBJECT].sigmoid(),
                                                     batch['camera_ids'],
                                                     batch['calibrations'],
                                                     batch['ego_states'], 
                                                     imgs_copy,
-                                                    color=torch.tensor(layer_colors[layer_idx].tolist(), dtype=torch.float32),
-                                                    matched_indices=matched_indices)[1]
+                                                    color=torch.tensor(layer_colors[layer_idx - 1].tolist(), dtype=torch.float32),
+                                                    matched_indices=matched_indices,
+                                                    refined_trajs=refined_trajs,
+                                                    refined_color=torch.tensor(layer_colors[layer_idx].tolist(), dtype=torch.float32))[1]
                 for camera_id in concat_imgs.keys():
                     if camera_id not in self.debug_config.visualize_camera_list:
                         continue

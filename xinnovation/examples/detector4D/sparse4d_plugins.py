@@ -152,7 +152,7 @@ class TrajectoryRefiner(nn.Module):
         # HAS_OBJECT, STATIC, OCCLUDED, CAR, SUV, LIGHTTRUCK, TRUCK, BUS, PEDESTRIAN, BICYCLE, MOTO, CYCLIST, MOTORCYCLIST, CONE
         self.cls_dim = TrajParamIndex.END_OF_INDEX - self.reg_dim
         self.cls_layers = nn.Sequential(
-            *linear_relu_ln(hidden_dim, 1, 2, query_dim),
+            *linear_relu_ln(hidden_dim, 2, 2, query_dim),
             nn.Linear(hidden_dim, self.cls_dim),
         )
 

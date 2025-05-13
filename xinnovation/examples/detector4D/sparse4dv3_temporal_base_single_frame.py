@@ -19,7 +19,7 @@ exp_name = "sparse4dv3_temporal_base_single_frame"
 work_dir = "/home/xinjian/Code/pytorch-lightning"
 save_dir = f"{work_dir}/xinnovation_checkpoints/{exp_name}"
 checkpoint_dir = f"{work_dir}/xinnovation_checkpoints/{exp_name}"
-epochs = 1
+epochs = 50
 accumulate_grad_batches = 1
 resume = False
 shuffle = False
@@ -309,7 +309,8 @@ lightning_module = dict(
         visualize_validation_results=True,
         save_intermediate_results=True,
         visualize_validation_results_dir=f"{work_dir}/xinnovation_validation_results",
-        visualize_camera_list=[SourceCameraId.FRONT_LEFT_CAMERA, SourceCameraId.SIDE_LEFT_CAMERA, SourceCameraId.REAR_LEFT_CAMERA],
+        visualize_camera_list=[SourceCameraId.FRONT_LEFT_CAMERA, SourceCameraId.SIDE_LEFT_CAMERA, 
+                               SourceCameraId.SIDE_RIGHT_CAMERA, SourceCameraId.REAR_LEFT_CAMERA, SourceCameraId.REAR_RIGHT_CAMERA],
         render_gt_trajs=True,
         render_init_trajs=True,
         render_pred_trajs=True,
@@ -322,7 +323,7 @@ lightning_module = dict(
         point_radius=1,
         log_dir=f"{save_dir}/logs/{exp_name}",
         predict_dir=f"{work_dir}/xinnovation_predict_results",
-        render_bbox2d=False
+        render_bbox2d=True
     ),
 )
 
