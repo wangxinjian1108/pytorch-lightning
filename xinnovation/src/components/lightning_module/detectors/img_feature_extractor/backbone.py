@@ -16,13 +16,14 @@ class ImageFeatureExtractor(nn.Module):
     2. Support for various pretrained backbones
     3. Returns features at different scales
     """
-    def __init__(self, backbone: str, scales_to_drop: List[int] = [], use_pretrained: bool = True, **kwargs):
+    def __init__(self, backbone: str, scales_to_drop: List[int] = [], use_pretrained: bool = True, freeze: bool = False, **kwargs):
         super().__init__()
         """
         Args:
             backbone: str, backbone name
             scales_to_drop: List[int], if the scale is in the list, its corresponding feature will be dropped
             use_pretrained: bool, whether to use pretrained backbone
+            freeze: bool, whether to freeze the backbone
         """
 
         self.use_pretrained = use_pretrained
@@ -169,6 +170,11 @@ class ImageFeatureExtractor(nn.Module):
             )
         
         self.init_weights()
+        
+        if freeze:
+            for p in self.parameters():
+                p.requires_grad = False
+        
     def init_weights(self):
         """Initialize network weights."""
         if self.use_pretrained:

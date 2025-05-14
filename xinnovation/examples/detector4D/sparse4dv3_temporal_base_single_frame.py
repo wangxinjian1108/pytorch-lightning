@@ -111,12 +111,13 @@ lightning_data_module = dict(
 
 
 # ============================== 4. Model Config ==============================
-def repvgg_backbone(name: str="a1", scales_to_drop: List[int]=[2, 4], use_pretrained: bool=True):
+def repvgg_backbone(name: str="a1", scales_to_drop: List[int]=[2, 4], use_pretrained: bool=True, freeze: bool = False):
     return dict(
         type="ImageFeatureExtractor",
         backbone=f'repvgg_{name}',
         scales_to_drop=scales_to_drop,
-        use_pretrained=use_pretrained
+        use_pretrained=use_pretrained,
+        freeze=freeze
     )
 
 def fpn_neck(in_channels: List[int]=[256, 512, 1024]):
